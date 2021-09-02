@@ -33,7 +33,7 @@ PARAMS = {
                 'align_field': 'move_onset_time',
                 'align_range': (-250, 450),
             },
-            'kern_sd': 30,
+            'kern_sd': 70,
         },
     },
     'mc_rtt': {
@@ -81,7 +81,7 @@ PARAMS = {
                     'align_field': 'move_onset_time',
                     'align_range': (-100, 500),
             },
-            'kern_sd': 30,
+            'kern_sd': 40,
         },
     },
     'dmfc_rsg': {
@@ -111,7 +111,7 @@ PARAMS = {
                 'end_field': 'go_time',
                 'align_field': 'go_time',
             },
-            'kern_sd': 30,
+            'kern_sd': 70,
             'pad': 'front',
             'seg_len': 1500,
             'skip_mask': lambda x: x.is_outlier == 1,
@@ -140,7 +140,7 @@ PARAMS = {
                 'align_field': 'move_onset_time',
                 'align_range': (-250, 450),
             },
-            'kern_sd': 30,
+            'kern_sd': 50,
         },
     },
     'mc_maze_medium': {
@@ -166,7 +166,7 @@ PARAMS = {
                 'align_field': 'move_onset_time',
                 'align_range': (-250, 450),
             },
-            'kern_sd': 30,
+            'kern_sd': 50,
         },
     },
     'mc_maze_small': {
@@ -192,7 +192,7 @@ PARAMS = {
                 'align_field': 'move_onset_time',
                 'align_range': (-250, 450),
             },
-            'kern_sd': 30,
+            'kern_sd': 50,
         },
     },
 }

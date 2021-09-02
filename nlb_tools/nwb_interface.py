@@ -771,8 +771,12 @@ def smooth_column(args):
         # split continuous data into NaN and not-NaN segments
         splits = np.where(np.diff(np.isnan(x)))[0] + 1
         seqs = np.split(x, splits)
+        # if signal.convolve uses fftconvolve, there may be small negative values
+        def rectify(arr):
+            arr[arr < 0] = 0
+            return arr
         # smooth only the not-NaN data
-        seqs = [seq if np.any(np.isnan(seq)) else signal.convolve(seq, window, 'same') for seq in seqs]
+        seqs = [seq if np.any(np.isnan(seq)) else rectify(signal.convolve(seq, window, 'same')) for seq in seqs]
         # concatenate to single array
         y = np.concatenate(seqs).astype(dtype)
     else:

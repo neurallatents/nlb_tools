@@ -13,7 +13,7 @@ from nlb_tools.evaluation import evaluate
 # ---- Default params ---- #
 default_dict = { # [states, factors, dynamics_kwargs]
     'mc_maze': [6, 38, {'l2_penalty_A': 30000.0, 'l2_penalty_b': 6.264734351046042e-05}],
-    'mc_rtt': [8, 20, {'l2_penalty_A', :5088.303423769022, 'l2_penalty_b': 2.0595034155496943e-07}],
+    'mc_rtt': [8, 20, {'l2_penalty_A': 5088.303423769022, 'l2_penalty_b': 2.0595034155496943e-07}],
     'area2_bump': [4, 15, {'l2_penalty_A': 10582.770724811768, 'l2_penalty_b': 3.982037833098992e-05}],
     'dmfc_rsg': [10, 30, {'l2_penalty_A': 30000.0, 'l2_penalty_b': 1e-05}],
     'mc_maze_large': [4, 28, {'l2_penalty_A': 5462.032425984561, 'l2_penalty_b': 2.1670446099229413e-05}],
@@ -58,7 +58,6 @@ prefix_dict = {
 }
 datapath = datapath_dict[dataset_name]
 prefix = prefix_dict.get(dataset_name, '')
-save_dir = f'./{dataset_name}_runs/run_{datetime.now().strftime("%Y%m%d_%H%M%S")}.h5'
 
 # ---- Load data ---- #
 dataset = NWBDataset(datapath, prefix,
@@ -72,7 +71,7 @@ if phase == 'val':
 else:
     train_split = ['train', 'val']
     eval_split = 'test'
-train_dict = make_train_input_tensors(dataset, dataset_name, train_split, save_file=False. include_forward_pred=True)
+train_dict = make_train_input_tensors(dataset, dataset_name, train_split, save_file=False, include_forward_pred=True)
 train_spikes_heldin = train_dict['train_spikes_heldin']
 train_spikes_heldout = train_dict['train_spikes_heldout']
 eval_dict = make_eval_input_tensors(dataset, dataset_name, eval_split, save_file=False)
@@ -114,18 +113,18 @@ numtrain = len(train_datas)
 numeval = len(eval_datas)
 
 # ---- Run SLDS ---- #
-rslds = SLDS(N, K, D,
+slds = SLDS(N, K, D,
     transitions=transitions,
     emissions=emissions,
     emission_kwargs=dict(link="softplus"),
     dynamics_kwargs=dynamics_kwargs,
 )
 
-train_datas, train_inputs, train_masks, train_tags = rslds.prep_inputs(datas=train_datas)
-eval_datas, eval_inputs, eval_masks, eval_tags = rslds.prep_inputs(datas=eval_datas, masks=eval_masks)
+train_datas, train_inputs, train_masks, train_tags = slds.prep_inputs(datas=train_datas)
+eval_datas, eval_inputs, eval_masks, eval_tags = slds.prep_inputs(datas=eval_datas, masks=eval_masks)
 gc.collect()
 
-q_elbos_lem_train, q_lem_train, *_ = rslds.fit(
+q_elbos_lem_train, q_lem_train, *_ = slds.fit(
     datas=train_datas,
     inputs=train_inputs,
     masks=train_masks,
@@ -136,7 +135,7 @@ q_elbos_lem_train, q_lem_train, *_ = rslds.fit(
     num_init_iters=50, num_iters=num_iters, alpha=alpha
 )
 
-q_elbos_lem_eval, q_lem_eval, *_ = rslds.approximate_posterior(
+q_elbos_lem_eval, q_lem_eval, *_ = slds.approximate_posterior(
     datas=eval_datas, 
     inputs=eval_inputs,
     masks=eval_masks,
@@ -146,8 +145,8 @@ q_elbos_lem_eval, q_lem_eval, *_ = rslds.approximate_posterior(
     num_iters=num_iters, alpha=alpha,
 )
 
-train_rates = rslds.smooth_3d(q_lem_train.mean_continuous_states, train_datas, train_inputs, train_masks, train_tags).cpu().numpy()
-eval_rates = rslds.smooth_3d(q_lem_eval.mean_continuous_states, eval_datas, eval_inputs, eval_masks, eval_tags).cpu().numpy()
+train_rates = slds.smooth_3d(q_lem_train.mean_continuous_states, train_datas, train_inputs, train_masks, train_tags).cpu().numpy()
+eval_rates = slds.smooth_3d(q_lem_eval.mean_continuous_states, eval_datas, eval_inputs, eval_masks, eval_tags).cpu().numpy()
 
 # ---- Format output ---- #
 train_rates_heldin = train_rates[:, :tlen, :num_heldin]
@@ -168,7 +167,7 @@ output_dict = {
         'eval_rates_heldout_forward': eval_rates_heldout_forward,
     }
 }
-save_to_h5(output_dict, save_dir + f'iter_{iternum}/slds_output_{dataset_name}{binsuf}.h5')
+save_to_h5(output_dict, f'slds_output_{dataset_name}{binsuf}.h5')
 
 # ---- Evaluate ---- #
 if phase == 'val':

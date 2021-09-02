@@ -9,7 +9,7 @@ setup(
         'scipy',
         'numpy',
         'scikit-learn',
-        'h5py<3,>=2.9',
+        'h5py<4,>=2.9',
         'pynwb',
     ],
     author="Neural Latents",
