@@ -768,6 +768,7 @@ def smooth_column(args):
     """
     x, window, ignore_nans, dtype = args
     if ignore_nans and np.any(np.isnan(x)):
+        x.astype(dtype)
         # split continuous data into NaN and not-NaN segments
         splits = np.where(np.diff(np.isnan(x)))[0] + 1
         seqs = np.split(x, splits)
@@ -778,9 +779,9 @@ def smooth_column(args):
         # smooth only the not-NaN data
         seqs = [seq if np.any(np.isnan(seq)) else rectify(signal.convolve(seq, window, 'same')) for seq in seqs]
         # concatenate to single array
-        y = np.concatenate(seqs).astype(dtype)
+        y = np.concatenate(seqs)
     else:
-        y = signal.convolve(x, window, 'same').astype(dtype)
+        y = signal.convolve(x.astype(dtype), window, 'same')
     return y
 
 def _poolmap(f, X, nprocs=multiprocessing.cpu_count(), chunksize=None):

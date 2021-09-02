@@ -1031,7 +1031,10 @@ def _make_psth(dataset, eval_mask, ignore_mask, make_params, cond_fields, kern_s
     # Reload dataset and smooth spikes
     bin_width = dataset.bin_width
     dataset = NWBDataset(dataset.fpath, dataset.prefix, skip_fields=['force', 'hand_pos', 'hand_vel', 'finger_pos', 'finger_vel', 'eye_pos', 'cursor_pos', 'muscle_len', 'muscle_vel', 'joint_ang', 'joint_vel'])
-    dataset.smooth_spk(kern_sd, signal_type=['spikes', 'heldout_spikes'], overwrite=True)
+    if kern_sd > 50:
+        dataset.smooth_spk(kern_sd, signal_type=['spikes', 'heldout_spikes'], overwrite=True, ignore_nans=True)
+    else:
+        dataset.smooth_spk(kern_sd, signal_type=['spikes', 'heldout_spikes'], overwrite=True)
     if bin_width != 1:
         dataset.resample(bin_width)
 
