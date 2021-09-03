@@ -1,4 +1,4 @@
-# nlb_tools
+# NLB Codepack (nlb_tools)
 Python tools for participating in Neural Latents Benchmark '21.
 
 ## Overview
