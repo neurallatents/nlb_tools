@@ -59,7 +59,7 @@ def evaluate(test_annotation_file, user_submission_file):
             logger.info(f"Evaluating {dataset_name}")
             result_dict = {}
             # check that both submission and evaluation dicts have data for this dataset
-            if 'train_rates_heldin' not in user_data[dataset_name].keys():
+            if 'eval_rates_heldout' not in user_data[dataset_name].keys():
                 continue
             elif (dataset_name) not in target_data.keys() or 'eval_spikes_heldout' not in target_data[dataset_name].keys():
                 logger.warning(f"Evaluation data for {dataset_name} not found")

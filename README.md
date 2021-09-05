@@ -28,6 +28,7 @@ format data for our benchmark. You can also find Jupyter notebooks demonstrating
 ## Other resources
 For more information on the benchmark:
 * our [main webpage](https://neurallatents.github.io) contains general information on our benchmark pipeline and introduces the datasets
-* our [EvalAI challenge]() is where submissions are evaluated and displayed on the leaderboard
+* our [EvalAI challenge](https://eval.ai/web/challenges/challenge-page/1253/overview) is where submissions are evaluated and displayed on the leaderboard
 * our datasets are available on DANDI: [MC_Maze](https://dandiarchive.org/#/dandiset/000128), [MC_RTT](https://dandiarchive.org/#/dandiset/000129), [Area2_Bump](https://dandiarchive.org/#/dandiset/000127), [DMFC_RSG](https://dandiarchive.org/#/dandiset/000130), [MC_Maze_Large](https://dandiarchive.org/#/dandiset/000138), [MC_Maze_Medium](https://dandiarchive.org/#/dandiset/000139), [MC_Maze_Small](https://dandiarchive.org/#/dandiset/000140)
 * our [paper]() describes our motivations behind this benchmarking effort as well as various technical details and explanations of design choices made in preparing NLB'21
+* our [Slack workspace](https://join.slack.com/t/neurallatents/shared_invite/zt-vm8lbuio-jXmUjcYOu01KFDmwl6HmEg) lets you interact directly with the developers and other participants

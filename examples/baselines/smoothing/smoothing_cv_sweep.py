@@ -32,9 +32,9 @@ datapath_dict = {
     'mc_rtt': '~/data/000129/sub-Indy/',
     'area2_bump': '~/data/000127/sub-Han/',
     'dmfc_rsg': '~/data/000130/sub-Gershwin/',
-    'mc_maze_large': '~/data/000128/sub-Jenkins/',
-    'mc_maze_medium': '~/data/000128/sub-Jenkins/',
-    'mc_maze_small': '~/data/000128/sub-Jenkins/',
+    'mc_maze_large': '~/data/000138/sub-Jenkins/',
+    'mc_maze_medium': '~/data/000139/sub-Jenkins/',
+    'mc_maze_small': '~/data/000140/sub-Jenkins/',
 }
 prefix_dict = {
     'mc_maze': '*full',
