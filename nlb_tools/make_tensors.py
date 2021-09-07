@@ -17,7 +17,7 @@ PARAMS = {
         'hospk_field': 'heldout_spikes',
         'behavior_source': 'data',
         'behavior_field': 'hand_vel',
-        'lag': 80,
+        'lag': 100,
         'make_params': {
             'align_field': 'move_onset_time',
             'align_range': (-250, 450),
@@ -43,7 +43,7 @@ PARAMS = {
         'horate_field': 'heldout_rates',
         'behavior_source': 'data',
         'behavior_field': 'finger_vel',
-        'lag': 120,
+        'lag': 140,
         'make_params': {
             'align_field': 'start_time',
             'align_range': (0, 600),
@@ -124,7 +124,7 @@ PARAMS = {
         'horate_field': 'heldout_rates',
         'behavior_source': 'data',
         'behavior_field': 'hand_vel',
-        'lag': 80,
+        'lag': 120,
         'make_params': {
             'align_field': 'move_onset_time',
             'align_range': (-250, 450),
@@ -150,7 +150,7 @@ PARAMS = {
         'horate_field': 'heldout_rates',
         'behavior_source': 'data',
         'behavior_field': 'hand_vel',
-        'lag': 80,
+        'lag': 120,
         'make_params': {
             'align_field': 'move_onset_time',
             'align_range': (-250, 450),
@@ -176,7 +176,7 @@ PARAMS = {
         'horate_field': 'heldout_rates',
         'behavior_source': 'data',
         'behavior_field': 'hand_vel',
-        'lag': 80,
+        'lag': 120,
         'make_params': {
             'align_field': 'move_onset_time',
             'align_range': (-250, 450),
@@ -1170,7 +1170,38 @@ def _save_h5_r(data_dict, h5obj, dlen):
             else:
                 dtype = f'float{dlen}' if val.dtype == np.float else f'int{dlen}' if val.dtype == np.int else val.dtype
             h5obj.create_dataset(key, data=val, dtype=dtype)
+            
+def h5_to_dict(h5obj):
+    data_dict = {}
+    for key in h5obj.keys():
+        if isinstance(h5obj[key], h5py.Group):
+            data_dict[key] = h5_to_dict(h5obj[key])
+        else:
+            data_dict[key] = h5obj[key][()]
+    return data_dict
 
+def combine_h5(file_paths, save_path=None):
+    """Function that takes multiple .h5 files and combines them into one.
+    May be particularly useful for combining MC_Maze scaling results for submission
+
+    Parameters
+    ----------
+    file_paths : list
+        List of paths to h5 files to combine
+    save_path : str, optional
+        Path to save combined results to. By
+        default None saves to first path in 
+        `file_paths`.
+    """
+    assert len(file_paths) > 1, "Must provide at least 2 files to combine"
+    if save_path is None:
+        save_path = file_paths[0]
+    for fpath in file_paths:
+        if fpath == save_path:
+            continue
+        with h5py.File(fpath, 'r') as h5file:
+            data_dict = h5_to_dict(h5file)
+        save_to_h5(data_dict, save_path)
 
 ''' Tensor chopping convenience functions '''
 def chop_tensors(fpath, window, overlap, chop_fields=None, save_path=None):
