@@ -64,7 +64,7 @@ PARAMS = {
         'behavior_source': 'data',
         'behavior_field': 'hand_vel',
         'decode_masks': lambda x: np.stack([x.ctr_hold_bump == 0, x.ctr_hold_bump == 1]).T,
-        'lag': -40,
+        'lag': -20,
         'make_params': {
             'align_field': 'move_onset_time',
             'align_range': (-100, 500),
@@ -816,8 +816,6 @@ def merge_cont_chops_to_df(dataset, data_dicts, ci, masks):
         merged = merged.groupby('clock_time', sort=False).mean().reset_index()
     dataset.data = pd.concat([dataset.data, merged.set_index('clock_time')], axis=1)
 
-
-''' Miscellaneous helper functions '''
 def combine_train_eval(dataset, train_dict, eval_dict, train_split, eval_split):
     """Function that combines dict of tensors from two splits
     into one tensor while preserving original order of trials
@@ -903,6 +901,8 @@ def _combine_dict(train_dict, eval_dict, train_idx, eval_idx):
             combine_dict[key] = full_arr
     return combine_dict
 
+
+''' Miscellaneous helper functions '''
 def _prep_mask(dataset, trial_split):
     """Converts string trial split names to boolean array and combines
     multiple splits if a list is provided
@@ -1172,6 +1172,19 @@ def _save_h5_r(data_dict, h5obj, dlen):
             h5obj.create_dataset(key, data=val, dtype=dtype)
             
 def h5_to_dict(h5obj):
+    """Recursive function that reads HDF5 file to dict
+
+    Parameters
+    ----------
+    h5obj : h5py.File or h5py.Group
+        File or group object to load into a dict
+    
+    Returns
+    -------
+    dict of np.array
+        Dict mapping h5obj keys to arrays
+        or other dicts
+    """
     data_dict = {}
     for key in h5obj.keys():
         if isinstance(h5obj[key], h5py.Group):
