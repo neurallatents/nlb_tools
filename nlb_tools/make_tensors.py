@@ -90,14 +90,19 @@ PARAMS = {
         'behavior_source': 'trial_info',
         'behavior_mask': lambda x: x.is_outlier == 0,
         'behavior_field': ['is_eye', 'theta', 'is_short', 'ts', 'tp'],
+        'jitter': lambda x: np.stack([
+            np.zeros(len(x)),
+            np.where(x.split == 'test', np.zeros(len(x)), np.clip(1500.0 - x.tp.to_numpy(), 0.0, 300.0))
+        ]).T,
         'make_params': {
             'align_field': 'go_time',
             'align_range': (-1500, 0),
-            'allow_overlap': True
+            'allow_overlap': True,
         },
         'eval_make_params': {
             'start_field': 'set_time',
             'end_field': 'go_time',
+            'align_field': 'go_time',
         },
         'eval_tensor_params': {
             'seg_len': 1500,
@@ -205,7 +210,8 @@ def make_train_input_tensors(dataset, dataset_name,
                              return_dict=True,
                              save_path="train_input.h5",
                              include_behavior=False,
-                             include_forward_pred=False):
+                             include_forward_pred=False,
+                             seed=0):
     """Makes model training input tensors.
     Creates 3d arrays containing heldin and heldout spikes
     for train trials (and other data if indicated)
@@ -246,6 +252,8 @@ def make_train_input_tensors(dataset, dataset_name,
     include_forward_pred : bool, optional
         Whether to include forward-prediction spiking
         data in the returned tensors, by default False
+    seed : int, optional
+        Seed for random generator used for jitter
     
     Returns
     -------
@@ -271,9 +279,24 @@ def make_train_input_tensors(dataset, dataset_name,
     spk_field = params['spk_field']
     hospk_field = params['hospk_field']
     make_params = params['make_params'].copy()
+    jitter = params.get('jitter', None)
     
     # Prep mask
     trial_mask = _prep_mask(dataset, trial_split)
+
+    # Prep jitter if necessary
+    if jitter is not None:
+        np.random.seed(seed)
+        jitter_vals = _prep_jitter(dataset, trial_mask, jitter)
+        align_field = make_params.get('align_field', make_params.get('start_field', 'start_time'))
+        align_vals = dataset.trial_info[trial_mask][align_field]
+        align_jit = align_vals + pd.to_timedelta(jitter_vals, unit='ms')
+        align_jit.name = align_field.replace('_time', '_jitter_time')
+        dataset.trial_info = pd.concat([dataset.trial_info, align_jit], axis=1)
+        if 'align_field' in make_params:
+            make_params['align_field'] = align_jit.name
+        else:
+            make_params['start_field'] = align_jit.name
 
     # Make output spiking arrays and put into data_dict
     train_dict = make_stacked_array(dataset, [spk_field, hospk_field], make_params, trial_mask)
@@ -310,6 +333,10 @@ def make_train_input_tensors(dataset, dataset_name,
         data_dict['train_spikes_heldin_forward'] = fp_dict[spk_field]
         data_dict['train_spikes_heldout_forward'] = fp_dict[hospk_field]
 
+    # Delete jitter column
+    if jitter is not None:
+        dataset.trial_info.drop(align_jit.name, axis=1, inplace=True)
+
     # Save and return data
     if save_file:
         save_to_h5(data_dict, save_path, overwrite=True)
@@ -321,7 +348,8 @@ def make_eval_input_tensors(dataset, dataset_name,
                             update_params=None,
                             save_file=True,
                             return_dict=True,
-                            save_path="eval_input.h5"):
+                            save_path="eval_input.h5",
+                            seed=0):
     """Makes model evaluation input tensors.
     Creates 3d arrays containing heldin spiking for 
     eval trials (and heldout spiking if available)
@@ -356,6 +384,8 @@ def make_eval_input_tensors(dataset, dataset_name,
         by default True
     save_path : str, optional
         Path to where the h5 output file should be saved
+    seed : int, optional
+        Seed for random generator used for jitter
     
     Returns
     -------
@@ -381,9 +411,24 @@ def make_eval_input_tensors(dataset, dataset_name,
     hospk_field = params['hospk_field']
     make_params = params['make_params'].copy()
     make_params['allow_nans'] = True
+    jitter = params.get('jitter', None)
     
     # Prep mask
     trial_mask = _prep_mask(dataset, trial_split)
+
+    # Prep jitter if necessary
+    if jitter is not None:
+        np.random.seed(seed)
+        jitter_vals = _prep_jitter(dataset, trial_mask, jitter)
+        align_field = make_params.get('align_field', make_params.get('start_field', 'start_time'))
+        align_vals = dataset.trial_info[trial_mask][align_field]
+        align_jit = align_vals + pd.to_timedelta(jitter_vals, unit='ms')
+        align_jit.name = align_field.replace('_time', '_jitter_time')
+        dataset.trial_info = pd.concat([dataset.trial_info, align_jit], axis=1)
+        if 'align_field' in make_params:
+            make_params['align_field'] = align_jit.name
+        else:
+            make_params['start_field'] = align_jit.name
 
     # Make output spiking arrays and put into data_dict
     if not np.any(dataset.trial_info[trial_mask].split == 'test'):
@@ -398,6 +443,10 @@ def make_eval_input_tensors(dataset, dataset_name,
             'eval_spikes_heldin': eval_dict[spk_field],
         }
 
+    # Delete jitter column
+    if jitter is not None:
+        dataset.trial_info.drop(align_jit.name, axis=1, inplace=True)
+
     # Save and return data
     if save_file:
         save_to_h5(data_dict, save_path, overwrite=True)
@@ -411,7 +460,8 @@ def make_eval_target_tensors(dataset, dataset_name,
                      save_file=True,
                      return_dict=True,
                      save_path="target_data.h5",
-                     include_psth=False):
+                     include_psth=False,
+                     seed=0):
     """Makes tensors containing target data used to evaluate model predictions.
     Creates 3d arrays containing true heldout spiking data
     for eval trials and other arrays for model evaluation and saves them
@@ -457,6 +507,8 @@ def make_eval_target_tensors(dataset, dataset_name,
         to PSTH, by default False. Since PSTH calculation
         is memory and cpu-intensive in its current implementation,
         it may be desirable to skip this step
+    seed : int, optional
+        Seed for random generator used for jitter
     
     Returns
     -------
@@ -486,7 +538,7 @@ def make_eval_target_tensors(dataset, dataset_name,
     make_params = params['eval_make_params'].copy()
     behavior_source = params['behavior_source']
     behavior_field = params['behavior_field']
-    behavior_make_params = _prep_behavior(dataset, params.get('lag', None), make_params)
+    jitter = params.get('jitter', None)
     eval_tensor_params = params.get('eval_tensor_params', {}).copy()
     fp_len = params['fp_len']
     fp_steps = fp_len / dataset.bin_width
@@ -501,11 +553,37 @@ def make_eval_target_tensors(dataset, dataset_name,
         ignore_mask = dataset.trial_info.split == 'none'
     else:
         ignore_mask = ~(train_mask | eval_mask)
+    
+    # Prep jitter if necessary
+    if jitter is not None:
+        align_field = make_params.get('align_field', make_params.get('start_field', 'start_time'))
 
-    if not ('align_field' in make_params and 'align_range' in make_params):
+        np.random.seed(seed)
+        train_jitter_vals = _prep_jitter(dataset, train_mask, jitter)
+        train_align_vals = dataset.trial_info[train_mask][align_field]
+        train_align_jit = train_align_vals + pd.to_timedelta(train_jitter_vals, unit='ms')
+        train_align_jit.name = align_field.replace('_time', '_jitter_time')
+        dataset.trial_info = pd.concat([dataset.trial_info, train_align_jit], axis=1)
+
+        np.random.seed(seed)
+        eval_jitter_vals = _prep_jitter(dataset, eval_mask, jitter)
+        eval_align_vals = dataset.trial_info[eval_mask][align_field]
+        eval_align_jit = eval_align_vals + pd.to_timedelta(eval_jitter_vals, unit='ms')
+        eval_align_jit.name = align_field.replace('_time', '_jitter_time')
+        dataset.trial_info.loc[eval_mask, eval_align_jit.name] = eval_align_jit
+        if 'align_field' in make_params:
+            make_params['align_field'] = eval_align_jit.name
+        else:
+            make_params['start_field'] = eval_align_jit.name
+    else:
+        train_jitter_vals = None
+        eval_jitter_vals = None
+    
+    behavior_make_params = _prep_behavior(dataset, params.get('lag', None), make_params)
+    if not ('align_range' in make_params):
         # Stack jagged arrays by padding with NaNs if uneven trials
-        train_dict = make_jagged_array(dataset, [hospk_field], make_params, train_mask, **eval_tensor_params)[0]
-        eval_dict = make_jagged_array(dataset, [hospk_field], make_params, eval_mask, **eval_tensor_params)[0]
+        train_dict = make_jagged_array(dataset, [hospk_field], make_params, train_mask, jitter=train_jitter_vals, **eval_tensor_params)[0]
+        eval_dict = make_jagged_array(dataset, [hospk_field], make_params, eval_mask, jitter=eval_jitter_vals, **eval_tensor_params)[0]
     else:
         # Make standard 3d arrays
         eval_dict = make_stacked_array(dataset, [hospk_field], make_params, eval_mask)
@@ -562,8 +640,16 @@ def make_eval_target_tensors(dataset, dataset_name,
         if psth_params is None:
             logger.warning("PSTHs are not supported for this dataset, skipping...")
         else:
-            psths = _make_psth(dataset, eval_mask, ignore_mask, **psth_params)
+            (train_cond_idx, eval_cond_idx), psths, comb = _make_psth(dataset, train_mask, eval_mask, ignore_mask, **psth_params)
+            
+            data_dict[dataset_name + suf]['eval_cond_idx'] = eval_cond_idx
             data_dict[dataset_name + suf]['psth'] = psths
+            if eval_jitter_vals is not None:
+                data_dict[dataset_name + suf]['eval_jitter'] = (eval_jitter_vals / dataset.bin_width).round().astype(int)
+
+    # Delete jitter column
+    if jitter is not None:
+        dataset.trial_info.drop(eval_align_jit.name, axis=1, inplace=True)
 
     # Save and return data
     if save_file:
@@ -607,7 +693,7 @@ def make_stacked_array(dataset, fields, make_params, include_trials):
         array_dict[field] = np.stack([trial[field].to_numpy() for _, trial in grouped])
     return array_dict
 
-def make_jagged_array(dataset, fields, make_params, include_trials, pad='back', seg_len=None):
+def make_jagged_array(dataset, fields, make_params, include_trials, jitter=None, pad='back', seg_len=None):
     """Generates 3d trial x time x channel arrays for each given field for uneven trial lengths
 
     Parameters
@@ -642,22 +728,43 @@ def make_jagged_array(dataset, fields, make_params, include_trials, pad='back', 
         fields = [fields]
     if type(include_trials) != list:
         include_trials = [include_trials]
+    if jitter is None:
+        jitter = [np.zeros(it.sum()) for it in include_trials]
+    elif type(jitter) != list:
+        jitter = [jitter]
     trial_data = dataset.make_trial_data(ignored_trials=~np.any(include_trials, axis=0), **make_params)
     grouped = dict(list(trial_data.groupby('trial_id', sort=False)))
     max_len = np.max([trial.shape[0] for _, trial in grouped.items()]) if seg_len is None else int(round(seg_len / dataset.bin_width))
 
     dict_list = []
-    for trial_sel in include_trials:
+    for trial_sel, jitter_vals in zip(include_trials, jitter):
         trial_ixs = dataset.trial_info[trial_sel].index.to_numpy()
         array_dict = {}
         for field in fields:
             arr = np.full((len(trial_ixs), max_len, dataset.data[field].shape[1]), np.nan)
             for i in range(len(trial_ixs)):
+                jit = int(round(jitter_vals[i] / dataset.bin_width))
                 data = grouped[trial_ixs[i]][field].to_numpy()
                 if pad == 'front':
-                    arr[i, -data.shape[0]:, :] = data[-max_len:]
+                    if jit == 0:
+                        data = data[-max_len:]
+                        arr[i, -data.shape[0]:, :] = data
+                    elif jit > 0:
+                        data = data[-(max_len - jit):]
+                        arr[i, -(data.shape[0] + jit):-jit, :] = data
+                    else:
+                        data = data[-(max_len - jit):jit]
+                        arr[i, -data.shape[0]:, :] = data
                 elif pad == 'back':
-                    arr[i, :data.shape[0], :] = data[:max_len]
+                    if jit == 0:
+                        data = data[:max_len]
+                        arr[i, :data.shape[0], :] = data
+                    if jit > 0:
+                        data = data[jit:(max_len + jit)]
+                        arr[i, :data.shape[0], :] = data
+                    else:
+                        data = data[:(max_len - jit)]
+                        arr[i, -jit:(data.shape[0] - jit)] = data
             array_dict[field] = arr
         dict_list.append(array_dict)
     return dict_list
@@ -816,6 +923,7 @@ def merge_cont_chops_to_df(dataset, data_dicts, ci, masks):
         merged = merged.groupby('clock_time', sort=False).mean().reset_index()
     dataset.data = pd.concat([dataset.data, merged.set_index('clock_time')], axis=1)
 
+''' Miscellaneous helper functions '''
 def combine_train_eval(dataset, train_dict, eval_dict, train_split, eval_split):
     """Function that combines dict of tensors from two splits
     into one tensor while preserving original order of trials
@@ -901,8 +1009,6 @@ def _combine_dict(train_dict, eval_dict, train_idx, eval_idx):
             combine_dict[key] = full_arr
     return combine_dict
 
-
-''' Miscellaneous helper functions '''
 def _prep_mask(dataset, trial_split):
     """Converts string trial split names to boolean array and combines
     multiple splits if a list is provided
@@ -991,7 +1097,47 @@ def _prep_fp(make_params, fp_steps, bin_width_ms):
     }
     return fp_make_params
 
-def _make_psth(dataset, eval_mask, ignore_mask, make_params, cond_fields, kern_sd, pad='back', seg_len=None, skip_mask=None):
+def _prep_jitter(dataset, trial_mask, jitter):
+    """Helper function that that randomly choose jitter
+    values for each trial
+
+    Parameters
+    ----------
+    dataset : NWBDataset
+        Dataset to prepare jitter for
+    trial_mask : array-like of bool
+        Mask indicating which trials to prepare jitter for
+    jitter : np.ndarray
+        2d array with 2 columns. The first column
+        should be the lower bound on possible jitter values
+        per trial, and the second should be the upper 
+        bound (exclusive)
+    
+    Returns
+    -------
+    np.ndarray
+        Array containing jitter values for each trial in ms
+    """
+    trial_info = dataset.trial_info[trial_mask]
+    if callable(jitter):
+        jitter_range = jitter(trial_info)
+    elif isinstance(jitter, (list, tuple)) and len(jitter) == 2:
+        jitter_range = np.tile(np.array(jitter), (len(trial_info), 1))
+    elif isinstance(jitter, np.ndarray):
+        assert jitter.shape == (trial_info, 2), \
+            f"Error: `jitter` array shape is incorrect; " \
+            "provided shape: {jitter.shape}, expected shape: ({trial_info}, 2)"
+        jitter_range = jitter
+    else:
+        logger.error("Unrecognized type for argument `jitter`")
+    
+    jitter_range = np.floor((jitter_range / dataset.bin_width).round(4))
+
+    sample = lambda x: np.random.random() * (x[1] - x[0]) + x[0]
+    jitter_vals = np.apply_along_axis(sample, 1, jitter_range).round()
+    return jitter_vals * dataset.bin_width
+
+def _make_psth(dataset, train_mask, eval_mask, ignore_mask, make_params, cond_fields, kern_sd, pad='back', psth_len=None, seg_len=None, skip_mask=None):
     """Function to generate PSTHs to evaluate eval trials
     This function is extremely slow and memory-intensive, as it completely
     loads the dataset again so that it can smooth spikes before resampling
@@ -1000,6 +1146,8 @@ def _make_psth(dataset, eval_mask, ignore_mask, make_params, cond_fields, kern_s
     ----------
     dataset : NWBDataset
         Dataset object for which PSTHs are made
+    train_mask : array-like
+        Boolean mask indicating trials used for training
     eval_mask : array-like
         Boolean mask indicating trials to be evaluated
     ignore_mask : array-like
@@ -1027,14 +1175,20 @@ def _make_psth(dataset, eval_mask, ignore_mask, make_params, cond_fields, kern_s
         trials to be excluded from PSTH calculation.
         Can be callable function to be called on 
         `dataset.trial_info`
+    
+    Returns
+    -------
+    tuple
+        Tuple containing PSTHs and various related information
     """
     # Reload dataset and smooth spikes
     bin_width = dataset.bin_width
+    ti = dataset.trial_info
+    neur = dataset.data[['spikes', 'heldout_spikes']].columns
     dataset = NWBDataset(dataset.fpath, dataset.prefix, skip_fields=['force', 'hand_pos', 'hand_vel', 'finger_pos', 'finger_vel', 'eye_pos', 'cursor_pos', 'muscle_len', 'muscle_vel', 'joint_ang', 'joint_vel'])
-    if kern_sd > 50:
-        dataset.smooth_spk(kern_sd, signal_type=['spikes', 'heldout_spikes'], overwrite=True, ignore_nans=True)
-    else:
-        dataset.smooth_spk(kern_sd, signal_type=['spikes', 'heldout_spikes'], overwrite=True)
+    dataset.trial_info = ti
+    dataset.data = dataset.data.loc[:, neur]
+    dataset.smooth_spk(kern_sd, signal_type=['spikes', 'heldout_spikes'], overwrite=True, ignore_nans=True)
     if bin_width != 1:
         dataset.resample(bin_width)
 
@@ -1044,39 +1198,57 @@ def _make_psth(dataset, eval_mask, ignore_mask, make_params, cond_fields, kern_s
             skip_mask = skip_mask(dataset.trial_info)
     else:
         skip_mask = np.full(len(dataset.trial_info), False)
-    skip_ids = dataset.trial_info[skip_mask].trial_id.to_numpy()
 
-    num_neur = len(dataset.data[['spikes', 'heldout_spikes']].columns)
-    eval_trials = dataset.trial_info[eval_mask]
-    psth_list = []
-    for idx, row in eval_trials.iterrows():
-        if pd.isna(row[make_params.get('align_field', 'start_time')]):
-            continue
-        if row.trial_id in skip_ids:
-            psth_list.append(np.full((0, num_neur), np.nan))
-            continue
-        leaveout_mask = (dataset.trial_info.trial_id == row.trial_id)
-        comb = row[cond_fields]
+    # Find unique conditions based on trial info fields
+    if type(cond_fields) == str:
+        cond_fields = [cond_fields]
+    combinations = sorted(dataset.trial_info[~ignore_mask][cond_fields].dropna().set_index(cond_fields).index.unique().tolist())
+    
+    # Get trial ids of train and test trials
+    train_trial_ids = dataset.trial_info[train_mask][['trial_id', make_params.get('align_field', 'start_time')]].dropna().trial_id.to_numpy()
+    eval_trial_ids = dataset.trial_info[eval_mask][['trial_id', make_params.get('align_field', 'start_time')]].dropna().trial_id.to_numpy()
+    
+    # Koop through conditions
+    psth_list = []; train_ids_list = []; eval_ids_list = []; remove_combs = []
+    for comb in combinations:
+        # Find trials in condition
         mask = np.all(dataset.trial_info[cond_fields] == comb, axis=1)
-        if not np.any(mask & (~ignore_mask) & (~skip_mask) & (~leaveout_mask)):
-            logger.warning(f"Not enough trials to compute PSTH for trial {row.trial_id}")
-            psth_list.append(np.full((0, num_neur), np.nan))
+        if not np.any(mask & (~ignore_mask) & (~skip_mask)):
+            logger.warning(f"No matching trials found for {comb}. Dropping")
+            remove_combs.append(comb)
             continue
-        trial_data = dataset.make_trial_data(ignored_trials=(~mask | ignore_mask | skip_mask | leaveout_mask), **make_params)
+        # Make trial data
+        trial_data = dataset.make_trial_data(ignored_trials=(~mask | ignore_mask | skip_mask), allow_nans=True, **make_params)
+        # Find length of shortest trial
+        mean_len = np.mean([trial.shape[0] for tid, trial in trial_data.groupby('trial_id')])
+        tlens = {tid: trial.shape[0] for tid, trial in trial_data.groupby('trial_id')}
+        bad_tid = [tid for tid in tlens.keys() if tlens[tid] < (0.8 * mean_len)]
+        trial_data = trial_data[~np.isin(trial_data.trial_id, bad_tid)]
         min_len = np.min([trial.shape[0] for tid, trial in trial_data.groupby('trial_id')])
+        # Compute PSTH, shorten to min length
         psth = trial_data.groupby('align_time')[trial_data[['spikes', 'heldout_spikes']].columns].mean().to_numpy()
         psth = psth[:min_len] if pad == 'back' else psth[-min_len:]
+        # Find indices of train and test trials in condition, for evaluation
+        train_ids = np.sort(np.where(np.isin(train_trial_ids, trial_data.trial_id))[0])
+        eval_ids = np.sort(np.where(np.isin(eval_trial_ids, trial_data.trial_id))[0])
+        # Add to list
         psth_list.append(psth)
-
+        train_ids_list.append(train_ids)
+        eval_ids_list.append(eval_ids)
+    
+    # Stack PSTHs to 3d array
     max_len = np.max([psth.shape[0] for psth in psth_list]) if seg_len is None else int(round(seg_len / dataset.bin_width))
-    psth = np.vstack([psth if psth.shape[0] == max_len
+    psth = np.stack([psth if psth.shape[0] == max_len
                      else psth[:max_len] if (psth.shape[0] > max_len and pad == 'back')
                      else psth[max_len:] if (psth.shape[0] > max_len and pad == 'front')
                      else np.concatenate([psth, np.full((max_len - psth.shape[0], psth.shape[1]), np.nan)], axis=0) if pad == 'back'
                      else np.concatenate([np.full((max_len - psth.shape[0], psth.shape[1]), np.nan), psth], axis=0)
                      for psth in psth_list])
-    
-    return psth
+    good_comb = [comb for comb in combinations if comb not in remove_combs] 
+    train_ids_list = np.array(train_ids_list, dtype='object')
+    eval_ids_list = np.array(eval_ids_list, dtype='object')
+
+    return (train_ids_list, eval_ids_list), psth, good_comb
 
 
 ''' Tensor saving functions '''

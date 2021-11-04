@@ -83,7 +83,7 @@ def evaluate(test_annotation_file, user_submission_file):
                 mask = np.hstack([np.isnan(eval_spikes_heldout[:, :, 0])])
                 # calculate neural speed
                 eval_speeds = np.array([np.mean(np.linalg.norm(np.diff(eval_rates[i, :, :][~mask[i, :]], axis=0), axis=1), axis=0) for i in range(len(eval_rates))])
-
+                
                 # calculate correlation within each condition
                 decoding_rs = []
                 # conditions based only off prior, response modality, and direction
@@ -95,7 +95,7 @@ def evaluate(test_annotation_file, user_submission_file):
                     cond_eval_speeds = eval_speeds[cmask]
                     cond_eval_behavior = eval_behavior[cmask][:, -1]
                     decoding_rs.append(pearsonr(cond_eval_speeds, cond_eval_behavior)[0])
-                decoding_r = np.median(decoding_rs)
+                decoding_r = np.mean(decoding_rs)
                 result_dict["tp corr"] = decoding_r
             else:
                 # extract train rates for regression
@@ -124,9 +124,14 @@ def evaluate(test_annotation_file, user_submission_file):
                 result_dict["vel R2"] = np.mean(decoding_r2s)
             
             if 'psth' in target_data[dataset_name].keys():
-                # extract PSTHs and evaluate
+                # get PSTH information and evaluate
                 psth = target_data[dataset_name]['psth'][()].astype('float')
-                psth_r2 = eval_psth(psth, eval_rates)              
+                eval_cond_idx = target_data[dataset_name]['eval_cond_idx'][()]
+                if 'eval_jitter' in target_data[dataset_name].keys():
+                    jitter = target_data[dataset_name]['eval_jitter'][()]
+                else:
+                    jitter = np.zeros(eval_rates.shape[0]).astype(int)
+                psth_r2 = eval_psth(psth, eval_rates, eval_cond_idx, jitter=jitter)
                 result_dict["psth R2"] = float(psth_r2)
 
             if 'eval_rates_heldin_forward' in user_data[dataset_name].keys() and 'eval_spikes_heldin_forward' in target_data[dataset_name].keys():
@@ -167,7 +172,7 @@ def evaluate(test_annotation_file, user_submission_file):
 
     return result_list
 
-def neg_log_likelihood(rates, spikes):
+def neg_log_likelihood(rates, spikes, zero_warning=True):
     """Calculates Poisson negative log likelihood given rates and spikes.
     formula: -log(e^(-r) / n! * r^n)
            = r - n*log(r) + log(n!)
@@ -178,14 +183,17 @@ def neg_log_likelihood(rates, spikes):
         numpy array containing rate predictions
     spikes : np.ndarray
         numpy array containing true spike counts
+    zero_warning : bool, optional
+        Whether to print out warning about 0 rate 
+        predictions or not
     
     Returns
     -------
     float
         Total negative log-likelihood of the data
-    """  
+    """
     assert spikes.shape == rates.shape, \
-        f"Rates and spikes should be of the same shape. spikes: {spikes.shape}, rates: {rates.shape}"
+        f"neg_log_likelihood: Rates and spikes should be of the same shape. spikes: {spikes.shape}, rates: {rates.shape}"
 
     if np.any(np.isnan(spikes)):
         mask = np.isnan(spikes)
@@ -193,12 +201,13 @@ def neg_log_likelihood(rates, spikes):
         spikes = spikes[~mask]
     
     assert not np.any(np.isnan(rates)), \
-        "NaN rate predictions found"
+        "neg_log_likelihood: NaN rate predictions found"
 
     assert np.all(rates >= 0), \
-        "Negative rate predictions found"
+        "neg_log_likelihood: Negative rate predictions found"
     if (np.any(rates == 0)):
-        logger.warning("Zero rate predictions found. Replacing zeros with 1e-9")
+        if zero_warning:
+            logger.warning("neg_log_likelihood: Zero rate predictions found. Replacing zeros with 1e-9")
         rates[rates == 0] = 1e-9
     
     result = rates - spikes * np.log(rates) + gammaln(spikes + 1.0)
@@ -223,7 +232,7 @@ def bits_per_spike(rates, spikes):
         Bits per spike of rate predictions
     """
     nll_model = neg_log_likelihood(rates, spikes)
-    nll_null = neg_log_likelihood(np.tile(np.nanmean(spikes, axis=(0,1), keepdims=True), (spikes.shape[0], spikes.shape[1], 1)), spikes)
+    nll_null = neg_log_likelihood(np.tile(np.nanmean(spikes, axis=(0,1), keepdims=True), (spikes.shape[0], spikes.shape[1], 1)), spikes, zero_warning=False)
     return (nll_null - nll_model) / np.nansum(spikes) / np.log(2)
 
 def fit_and_eval_decoder(train_rates, train_behavior, eval_rates, eval_behavior):
@@ -259,7 +268,7 @@ def fit_and_eval_decoder(train_rates, train_behavior, eval_rates, eval_behavior)
         eval_rates = eval_rates[~np.isnan(eval_behavior)[:, 0]]
         eval_behavior = eval_behavior[~np.isnan(eval_behavior)[:, 0]]
     assert not np.any(np.isnan(train_rates)) and not np.any(np.isnan(eval_rates)), \
-        "NaNs found in rate predictions within required trial times"
+        "fit_and_eval_decoder: NaNs found in rate predictions within required trial times"
 
     ridge = Ridge()
     param_grid = {'alpha': np.logspace(-4, 0, 9)}
@@ -267,27 +276,46 @@ def fit_and_eval_decoder(train_rates, train_behavior, eval_rates, eval_behavior)
     gscv.fit(train_rates, train_behavior)
     return gscv.score(eval_rates, eval_behavior)
 
-def eval_psth(psth, eval_rates):
-    """Evaluates match to PSTH
-
+def eval_psth(psth, eval_rates, eval_cond_idx, jitter=None):
+    """Evaluates match to PSTH across conditions
     Parameters
     ----------
     psth : np.ndarray
-        2d array, with dimensions time x neuron,
-        containing PSTHs for each unit for each
-        trial in the eval data
+        3d array, with dimensions condition x time x neuron,
+        containing PSTHs for each unit in each condition
     eval_rates : np.ndarray
         3d array, with dimensions trial x time x neuron,
-        containing rate predictions for all eval trials
+        containing rate predictions for all test split trials
+    eval_cond_idx : list of np.array
+        List of arrays containing indices of test trials
+        corresponding to conditions in `psth`
+    jitter : np.ndarray, optional
+        1d array containing jitter applied to each eval trial
     
     Returns
     -------
     float
-        R2 of rate predictions to true PSTHs, averaged
+        R2 of PSTHs computed from rate predictions
+        to true PSTHs across all conditions, averaged
         across neurons
     """
-    eval_rates = eval_rates.reshape(-1, eval_rates.shape[2])
-    nan_mask = np.isnan(psth[:, 0])
-    assert not np.any(np.isnan(eval_rates[~nan_mask])), \
-        "NaNs found in rate predictions within required trial times"
-    return r2_score(psth[~nan_mask], eval_rates[~nan_mask])
+    jitter_trial = lambda x: x[0] if x[1] == 0 else \
+        np.vstack([np.full((x[1], x[0].shape[1]), np.nan), x[0][:-x[1]]]) if x[1] > 0 else \
+        np.vstack([x[0][-x[1]:], np.full((-x[1], x[0].shape[1]), np.nan)])
+    if jitter is None:
+        jitter = np.zeros(eval_rates.shape[0]).astype(int)
+    true_list = []; pred_list = []
+    for i in range(len(eval_cond_idx)):
+        if eval_cond_idx[i].size == 0:
+            continue
+        pred_psth = np.mean([jitter_trial((eval_rates[idx], jitter[idx])) for idx in eval_cond_idx[i]], axis=0)
+        true_psth = psth[i, :, :][~np.isnan(psth[i, :, 0])]
+        pred_psth = pred_psth[~np.isnan(psth[i, :, 0])]
+        assert not np.any(np.isnan(pred_psth)), \
+            "eval_psth: NaNs found in rate predictions within required trial times"
+        true_list.append(true_psth)
+        pred_list.append(pred_psth)
+
+    true_psth = np.vstack(true_list)
+    pred_psth = np.vstack(pred_list)
+    return r2_score(true_psth, pred_psth)

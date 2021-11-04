@@ -112,7 +112,7 @@ datapath_dict = {
     'mc_maze': '~/data/000128/sub-Jenkins/',
     'mc_rtt': '~/data/000129/sub-Indy/',
     'area2_bump': '~/data/000127/sub-Han/',
-    'dmfc_rsg': '~/data/000130/sub-Gershwin/',
+    'dmfc_rsg': '~/data/000130/sub-Haydn/',
     'mc_maze_large': '~/data/000138/sub-Jenkins/',
     'mc_maze_medium': '~/data/000139/sub-Jenkins/',
     'mc_maze_small': '~/data/000140/sub-Jenkins/',
