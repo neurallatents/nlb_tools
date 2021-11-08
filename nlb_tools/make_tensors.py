@@ -92,7 +92,8 @@ PARAMS = {
         'behavior_field': ['is_eye', 'theta', 'is_short', 'ts', 'tp'],
         'jitter': lambda x: np.stack([
             np.zeros(len(x)),
-            np.where(x.split == 'test', np.zeros(len(x)), np.clip(1500.0 - x.tp.to_numpy(), 0.0, 300.0))
+            np.where(x.split == 'test', np.zeros(len(x)), 
+                     np.clip(1500.0 - x.get('tp', pd.Series(np.nan)).to_numpy(), 0.0, 300.0))
         ]).T,
         'make_params': {
             'align_field': 'go_time',
