@@ -94,7 +94,7 @@ class NWBDataset:
             self.data.index.name = 'clock_time'
         # If single file found
         else:
-            data, trial_info, descriptions, bin_width = self.load(filenames[0], split_heldout=split_heldout)
+            data, trial_info, descriptions, bin_width = self.load(filenames[0], split_heldout=split_heldout, skip_fields=skip_fields)
             self.data = data
             self.trial_info = trial_info
             self.descriptions = descriptions
