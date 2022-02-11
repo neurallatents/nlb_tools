@@ -79,24 +79,10 @@ def evaluate(test_annotation_file, user_submission_file):
             result_dict['co-bps'] = float(bits_per_spike(eval_rates_heldout, eval_spikes_heldout))
 
             if dataset == 'dmfc_rsg':
-                # find where data is outside of set-go period
-                mask = np.hstack([np.isnan(eval_spikes_heldout[:, :, 0])])
-                # calculate neural speed
-                eval_speeds = np.array([np.mean(np.linalg.norm(np.diff(eval_rates[i, :, :][~mask[i, :]], axis=0), axis=1), axis=0) for i in range(len(eval_rates))])
-                
-                # calculate correlation within each condition
-                decoding_rs = []
-                # conditions based only off prior, response modality, and direction
-                # because there aren't many trials for each t_s in the test split
-                cond_cols = [0, 1, 2]
-                conds = np.vstack(list({tuple(cond) for cond in eval_behavior[:, cond_cols] if not np.all(np.isnan(cond))})) # find conditions (behavior columns are in `make_tensors.py`)
-                for cond in conds:
-                    cmask = np.all(eval_behavior[:, cond_cols] == cond, axis=1)
-                    cond_eval_speeds = eval_speeds[cmask]
-                    cond_eval_behavior = eval_behavior[cmask][:, -1]
-                    decoding_rs.append(pearsonr(cond_eval_speeds, cond_eval_behavior)[0])
-                decoding_r = np.mean(decoding_rs)
-                result_dict["tp corr"] = decoding_r
+                # Compute Pearson's r for the correlation between neural speed and tp
+                result_dict["tp corr"] = speed_tp_correlation(
+                    eval_spikes_heldout, eval_rates, eval_behavior
+                )
             else:
                 # extract train rates for regression
                 train_rates_heldin = user_data[dataset_name]['train_rates_heldin'][()].astype('float')
@@ -319,3 +305,53 @@ def eval_psth(psth, eval_rates, eval_cond_idx, jitter=None):
     true_psth = np.vstack(true_list)
     pred_psth = np.vstack(pred_list)
     return r2_score(true_psth, pred_psth)
+
+
+def speed_tp_correlation(eval_spikes_heldout, eval_rates, eval_behavior):
+    """Computes speed-tp correlation for DMFC datasets.
+
+    Parameters
+    ----------
+    eval_spikes_heldout : np.ndarray
+        3d array, with dimensions trial x time x neuron,
+        containing heldout spikes for all test split trials. Contains NaNs
+        during non set-go time points.
+    eval_rates : np.ndarray
+        3d array, with dimensions trial x time x neuron,
+        containing rate predictions for all test split trials
+    eval_behavior : np.ndarray
+        2d array with same dimension ordering as train_behavior.
+        Used to determine conditions and evaluate correlation coefficient
+
+    Returns
+    -------
+    float
+        Pearson's r between neural speed computed from rates and actual
+        produced time interval tp, averaged across conditions.
+    """
+
+    # Find NaNs that indicate data outside of the set-go period
+    masks = ~np.isnan(eval_spikes_heldout[..., 0])
+    # Compute neural speed during the set-go period for each trial
+    def compute_speed(trial):
+        return np.mean(np.linalg.norm(np.diff(trial, axis=0), axis=1))
+    eval_speeds = [compute_speed(trial[mask]) for trial, mask in zip(eval_rates, masks)]
+    eval_speeds = np.array(eval_speeds)
+    # Compute correlation within each condition
+    decoding_rs = []
+    # conditions based only off prior, response modality, and direction
+    # because there aren't many trials for each t_s in the test split
+    # (behavior columns are in `make_tensors.py`)
+    cond_cols = [0, 1, 2]
+    # Get unique conditions and ignore NaNs
+    conds = np.unique(eval_behavior[:, cond_cols], axis=0)
+    conds = conds[~np.all(np.isnan(conds), axis=1)]
+    for cond in conds:
+        cmask = np.all(eval_behavior[:, cond_cols] == cond, axis=1)
+        cond_eval_speeds = eval_speeds[cmask]
+        cond_eval_tp = eval_behavior[cmask][:, -1]
+        cond_r, _ = pearsonr(cond_eval_speeds, cond_eval_tp)
+        decoding_rs.append(cond_r)
+    decoding_r = np.mean(decoding_rs)
+
+    return decoding_r
