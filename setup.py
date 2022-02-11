@@ -5,7 +5,7 @@ setup(
     version='0.0.1',
     packages=find_packages(),
     install_requires=[
-        'pandas',
+        'pandas>1,<=1.3.4',
         'scipy',
         'numpy',
         'scikit-learn',

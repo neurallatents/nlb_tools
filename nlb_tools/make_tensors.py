@@ -313,9 +313,9 @@ def make_train_input_tensors(dataset, dataset_name,
         behavior_make_params = _prep_behavior(dataset, params.get('lag', None), make_params)
         # Retrieve behavior data from indicated source
         if behavior_source == 'data':
-            train_behavior = make_stacked_array(dataset, behavior_field, behavior_make_params, trial_mask)[behavior_field]
+            train_behavior = make_jagged_array(dataset, [behavior_field], behavior_make_params, trial_mask)[0][behavior_field]
         else:
-            train_behavior = dataset.trial_info[trial_mask][behavior_field].to_numpy()
+            train_behavior = dataset.trial_info[trial_mask][behavior_field].to_numpy().astype('float')
         # Filter out behavior on certain trials if necessary
         if 'behavior_mask' in params:
             if callable(params['behavior_mask']):
