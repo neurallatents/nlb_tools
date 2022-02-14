@@ -370,6 +370,38 @@ def velocity_decoding(
     eval_decode_mask,
     grid_search=True,
 ):
+    """Computes hand velocity decoding performance for mc_maze, area2_bump, and mc_rtt.
+
+    Parameters
+    ----------
+    train_rates : np.ndarray
+        3d array, with dimensions trial x time x neuron,
+        containing rate predictions for all train split trials.
+    train_behavior : np.ndarray
+        3d array, with dimensions trial x time x 2, containing x and y hand velocity 
+        for all train split trials.
+    train_decode_mask : np.ndarray
+        2d array, with dimensions trial x n_masks, containing masks that group trials 
+        with the same decoder for all train split trials.
+    eval_rates : np.ndarray
+        3d array, with dimensions trial x time x neuron,
+        containing rate predictions for all test split trials.
+    eval_behavior : np.ndarray
+        3d array, with dimensions trial x time x 2, containing x and y hand velocity 
+        for all test split trials.
+    eval_decode_mask : np.ndarray
+        2d array, with dimensions trial x n_masks, containing masks that group trials 
+        with the same decoder for all test split trials.
+    grid_search : bool, optional
+        Whether to use a cross-validated grid search over the ridge regularization 
+        penalty, by default True
+
+    Returns
+    -------
+    float
+        Average coefficient of determination for hand velocity decoding across masked 
+        groups.
+    """
     flatten3d = lambda x: x.reshape(-1, x.shape[2]) if (len(x.shape) > 2) else x
     decoding_r2s = []
     # train/evaluate regression for each mask
