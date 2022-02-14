@@ -88,7 +88,6 @@ def evaluate(test_annotation_file, user_submission_file):
                 train_rates_heldin = user_data[dataset_name]['train_rates_heldin'][()].astype('float')
                 train_rates_heldout = user_data[dataset_name]['train_rates_heldout'][()].astype('float')
                 train_rates = np.concatenate([train_rates_heldin, train_rates_heldout], axis=-1)
-                flatten3d = lambda x: x.reshape(-1, x.shape[2]) if (len(x.shape) > 2) else x
                 # make decode mask if not provided
                 if 'train_decode_mask' in target_data[dataset_name].keys():
                     train_decode_mask = target_data[dataset_name]['train_decode_mask'][()]
@@ -96,19 +95,14 @@ def evaluate(test_annotation_file, user_submission_file):
                 else:
                     train_decode_mask = np.full(train_rates.shape[0], True)[:, None]
                     eval_decode_mask = np.full(eval_rates.shape[0], True)[:, None]
-                decoding_r2s = []
-                # train/evaluate regression for each mask
-                for i in range(train_decode_mask.shape[1]):
-                    decoding_r2 = fit_and_eval_decoder(
-                        flatten3d(train_rates[train_decode_mask[:, i]]),
-                        flatten3d(train_behavior[train_decode_mask[:, i]]),
-                        flatten3d(eval_rates[eval_decode_mask[:, i]]),
-                        flatten3d(eval_behavior[eval_decode_mask[:, i]])
-                    )
-                    decoding_r2s.append(decoding_r2)
-                # average R2s across masks
-                result_dict["vel R2"] = np.mean(decoding_r2s)
-            
+                result_dict["vel R2"] = velocity_decoding(
+                    train_rates,
+                    train_behavior,
+                    train_decode_mask,
+                    eval_rates,
+                    eval_behavior,
+                    eval_decode_mask,
+                )
             if 'psth' in target_data[dataset_name].keys():
                 # get PSTH information and evaluate
                 psth = target_data[dataset_name]['psth'][()].astype('float')
@@ -221,7 +215,13 @@ def bits_per_spike(rates, spikes):
     nll_null = neg_log_likelihood(np.tile(np.nanmean(spikes, axis=(0,1), keepdims=True), (spikes.shape[0], spikes.shape[1], 1)), spikes, zero_warning=False)
     return (nll_null - nll_model) / np.nansum(spikes) / np.log(2)
 
-def fit_and_eval_decoder(train_rates, train_behavior, eval_rates, eval_behavior):
+def fit_and_eval_decoder(
+    train_rates, 
+    train_behavior, 
+    eval_rates, 
+    eval_behavior, 
+    grid_search=True,
+):
     """Fits ridge regression on train data passed
     in and evaluates on eval data
 
@@ -241,6 +241,9 @@ def fit_and_eval_decoder(train_rates, train_behavior, eval_rates, eval_behavior)
     eval_behavior : np.ndarray
         2d array with same dimension ordering as train_behavior.
         Used to evaluate regressor
+    grid_search : bool
+        Whether to perform a cross-validated grid search to find 
+        the best regularization hyperparameters.
     
     Returns
     -------
@@ -256,11 +259,12 @@ def fit_and_eval_decoder(train_rates, train_behavior, eval_rates, eval_behavior)
     assert not np.any(np.isnan(train_rates)) and not np.any(np.isnan(eval_rates)), \
         "fit_and_eval_decoder: NaNs found in rate predictions within required trial times"
 
-    ridge = Ridge()
-    param_grid = {'alpha': np.logspace(-4, 0, 9)}
-    gscv = GridSearchCV(ridge, param_grid)
-    gscv.fit(train_rates, train_behavior)
-    return gscv.score(eval_rates, eval_behavior)
+    if grid_search:
+        decoder = GridSearchCV(Ridge(), {"alpha": np.logspace(-4, 0, 9)})
+    else:
+        decoder = Ridge(alpha=1e-2)
+    decoder.fit(train_rates, train_behavior)
+    return decoder.score(eval_rates, eval_behavior)
 
 def eval_psth(psth, eval_rates, eval_cond_idx, jitter=None):
     """Evaluates match to PSTH across conditions
@@ -355,3 +359,28 @@ def speed_tp_correlation(eval_spikes_heldout, eval_rates, eval_behavior):
     decoding_r = np.mean(decoding_rs)
 
     return decoding_r
+
+
+def velocity_decoding(
+    train_rates,
+    train_behavior,
+    train_decode_mask,
+    eval_rates,
+    eval_behavior,
+    eval_decode_mask,
+    grid_search=True,
+):
+    flatten3d = lambda x: x.reshape(-1, x.shape[2]) if (len(x.shape) > 2) else x
+    decoding_r2s = []
+    # train/evaluate regression for each mask
+    for i in range(train_decode_mask.shape[1]):
+        decoding_r2 = fit_and_eval_decoder(
+            flatten3d(train_rates[train_decode_mask[:, i]]),
+            flatten3d(train_behavior[train_decode_mask[:, i]]),
+            flatten3d(eval_rates[eval_decode_mask[:, i]]),
+            flatten3d(eval_behavior[eval_decode_mask[:, i]]),
+            grid_search=grid_search,
+        )
+        decoding_r2s.append(decoding_r2)
+    # average R2s across masks
+    return np.mean(decoding_r2s)
