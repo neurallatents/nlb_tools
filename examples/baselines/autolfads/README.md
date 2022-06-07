@@ -12,8 +12,4 @@ This directory contains files used to run AutoLFADS for NLB'21:
 
 ## Dependencies
 * [nlb_tools](https://github.com/neurallatents/nlb_tools)
-* lfads_tf2 (private)
-* tune_tf2 (private)
-
-Because the AutoLFADS paper is currently under review, we can not make `lfads_tf2` and `tune_tf2` public.
-However, we will do so once the review process is finished.
+* [autolfads-tf2](https://github.com/snel-repo/autolfads-tf2)
