@@ -315,7 +315,12 @@ def make_train_input_tensors(dataset, dataset_name,
         if behavior_source == 'data':
             train_behavior = make_jagged_array(dataset, [behavior_field], behavior_make_params, trial_mask)[0][behavior_field]
         else:
-            train_behavior = dataset.trial_info[trial_mask][behavior_field].to_numpy().astype('float')
+            train_behavior = (
+                dataset.trial_info[trial_mask][behavior_field]
+                .apply(lambda x: x.dt.total_seconds() if hasattr(x, "dt") else x)
+                .to_numpy()
+                .astype('float')
+            )
         # Filter out behavior on certain trials if necessary
         if 'behavior_mask' in params:
             if callable(params['behavior_mask']):
@@ -595,8 +600,18 @@ def make_eval_target_tensors(dataset, dataset_name,
     
     # Retrieve behavioral data
     if behavior_source == 'trial_info':
-        train_behavior = dataset.trial_info[train_mask][behavior_field].to_numpy().astype('float')
-        eval_behavior = dataset.trial_info[eval_mask][behavior_field].to_numpy().astype('float')
+        train_behavior = (
+            dataset.trial_info[train_mask][behavior_field]
+            .apply(lambda x: x.dt.total_seconds() if hasattr(x, "dt") else x)
+            .to_numpy()
+            .astype('float')
+        )
+        eval_behavior = (
+            dataset.trial_info[eval_mask][behavior_field]
+            .apply(lambda x: x.dt.total_seconds() if hasattr(x, "dt") else x)
+            .to_numpy()
+            .astype('float')
+        )
     else:
         train_behavior = btrain_dict[behavior_field]
         eval_behavior = beval_dict[behavior_field]
