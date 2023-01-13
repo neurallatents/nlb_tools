@@ -659,9 +659,11 @@ def make_eval_target_tensors(dataset, dataset_name,
             (train_cond_idx, eval_cond_idx), psths, comb = _make_psth(dataset, train_mask, eval_mask, ignore_mask, **psth_params)
             
             data_dict[dataset_name + suf]['eval_cond_idx'] = eval_cond_idx
+            data_dict[dataset_name + suf]['train_cond_idx'] = train_cond_idx
             data_dict[dataset_name + suf]['psth'] = psths
-            if eval_jitter_vals is not None:
+            if jitter is not None:
                 data_dict[dataset_name + suf]['eval_jitter'] = (eval_jitter_vals / dataset.bin_width).round().astype(int)
+                data_dict[dataset_name + suf]['train_jitter'] = (train_jitter_vals / dataset.bin_width).round().astype(int)
 
     # Delete jitter column
     if jitter is not None:
