@@ -1,0 +1,39 @@
+[tool.poetry]
+name = "nlb_tools"
+version = "0.0.1"
+license = "MIT"
+description = "Python tools for participating in Neural Latents Benchmark '21"
+authors = [
+    "Felix Pei <felp8484@gmail.com>"
+]
+packages = [
+    {include = "nlb_tools"}
+]
+
+readme = "README.md"
+homepage = "https://github.com/neurallatents/nlb_tools"
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: Unix",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+pandas = ">=1.0.0,<= 1.3.4"
+scipy = "*"
+numpy = "*"
+scikit-learn = "*"
+h5py = ">=2.9,<4"
+pynwb = "*"
+
+[tool.poetry.dev-dependencies]
+pytest = "*"
+dandi = "*"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
