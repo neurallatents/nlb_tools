@@ -14,7 +14,7 @@ This repo contains code to facilitate participation in NLB'21:
 ## Installation
 The package can be installed with the following command:
 ```
-pip install nlb_tools
+pip install nlb-tools
 ```
 However, to run the tutorial notebooks locally or make any modifications to the code, you should clone the repo. The package can then be installed with the following commands:
 ```
