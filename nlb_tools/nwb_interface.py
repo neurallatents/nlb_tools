@@ -143,8 +143,11 @@ class NWBDataset:
 
         # Load descriptions of trial info fields
         descriptions = {}
-        for name, info in zip(nwbfile.trials.colnames, nwbfile.trials.columns):
-            descriptions[name] = info.description
+        for name in nwbfile.trials.colnames:
+            if not hasattr(nwbfile.trials, name):
+                logger.warning(f"Field {name} not found in NWB file trials table")
+                continue
+            descriptions[name] = getattr(nwbfile.trials, name).description
 
         # Find all timeseries
         def make_df(ts):
