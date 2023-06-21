@@ -7,7 +7,7 @@ setup(
     install_requires=[
         'pandas>=1.0.0,<=1.3.4',
         'scipy',
-        'numpy',
+        'numpy<1.20',
         'scikit-learn',
         'h5py<4,>=2.9',
         'pynwb',
