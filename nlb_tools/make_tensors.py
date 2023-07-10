@@ -1355,10 +1355,12 @@ def _save_h5_r(data_dict, h5obj, dlen):
             _save_h5_r(val, h5group, dlen)
         else:
             if val.dtype == 'object':
-                sub_dtype = f'float{dlen}' if val[0].dtype == np.float else f'int{dlen}' if val[0].dtype == np.int else val[0].dtype
+                sub_dtype = f'float{dlen}' if np.issubdtype(val[0].dtype, np.floating) else \
+                    f'int{dlen}' if np.issubdtype(val[0].dtype, np.integer) else val[0].dtype
                 dtype = h5py.vlen_dtype(sub_dtype)
             else:
-                dtype = f'float{dlen}' if val.dtype == np.float else f'int{dlen}' if val.dtype == np.int else val.dtype
+                dtype = f'float{dlen}' if np.issubdtype(val.dtype, np.floating) else \
+                    f'int{dlen}' if np.issubdtype(val.dtype, np.integer) else val.dtype
             h5obj.create_dataset(key, data=val, dtype=dtype)
             
 def h5_to_dict(h5obj):
