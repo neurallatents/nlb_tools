@@ -1270,7 +1270,7 @@ def _make_psth(dataset, train_mask, eval_mask, ignore_mask, make_params, cond_fi
 
 
 ''' Tensor saving functions '''
-def save_to_h5(data_dict, save_path, overwrite=False, dlen=32):
+def save_to_h5(data_dict, save_path, overwrite=False, max_dlen=32):
     """Function that saves dict as .h5 file while preserving
     nested dict structure
 
@@ -1284,8 +1284,8 @@ def save_to_h5(data_dict, save_path, overwrite=False, dlen=32):
         Whether to overwrite duplicate data found 
         at `save_path` if file already exists, by
         default False
-    dlen : int, optional
-        Byte length of data format to save numerical data,
+    max_dlen : int, optional
+        Maximum byte length of data format to save numerical data,
         by default 32.
     """
     h5file = h5py.File(save_path, 'a')
@@ -1293,7 +1293,7 @@ def save_to_h5(data_dict, save_path, overwrite=False, dlen=32):
     if good:
         if len(dup_list) > 0:
             logger.warning(f"{dup_list} already found in {save_path}. Overwriting...")
-        _save_h5_r(data_dict, h5file, dlen)
+        _save_h5_r(data_dict, h5file, max_dlen)
         logger.info(f"Saved data to {save_path}")
     else:
         logger.warning(f"{dup_list} already found in {save_path}. Save to file canceled. " \
@@ -1336,7 +1336,7 @@ def _check_h5_r(data_dict, h5obj, overwrite):
                     good = False
     return good, dup_list
 
-def _save_h5_r(data_dict, h5obj, dlen):
+def _save_h5_r(data_dict, h5obj, max_dlen):
     """Recursive function that adds all the items in a dict to an h5py.File or h5py.Group object
 
     Parameters
@@ -1345,22 +1345,32 @@ def _save_h5_r(data_dict, h5obj, dlen):
         Dict containing data to be saved in HDF5 format
     h5obj : h5py.File or h5py.Group
         h5py object to save data to
-    dlen : int, optional
-        Byte length of data format to save numerical data,
+    max_dlen : int, optional
+        Maximum byte length of data format to save numerical data,
         by default 32.
     """
     for key, val in data_dict.items():
         if isinstance(val, dict):
             h5group = h5obj[key] if key in h5obj.keys() else h5obj.create_group(key)
-            _save_h5_r(val, h5group, dlen)
+            _save_h5_r(val, h5group, max_dlen)
         else:
             if val.dtype == 'object':
-                sub_dtype = f'float{dlen}' if np.issubdtype(val[0].dtype, np.floating) else \
-                    f'int{dlen}' if np.issubdtype(val[0].dtype, np.integer) else val[0].dtype
+                sub_dtype = val[0].dtype
+                if np.issubdtype(sub_dtype, np.floating):
+                    if sub_dtype.itemsize > (max_dlen // 8):
+                        sub_dtype = f'float{max_dlen}'
+                elif np.issubdtype(sub_dtype, np.integer):
+                    if sub_dtype.itemsize > (max_dlen // 8):
+                        sub_dtype = f'int{max_dlen}'
                 dtype = h5py.vlen_dtype(sub_dtype)
             else:
-                dtype = f'float{dlen}' if np.issubdtype(val.dtype, np.floating) else \
-                    f'int{dlen}' if np.issubdtype(val.dtype, np.integer) else val.dtype
+                dtype = val.dtype
+                if np.issubdtype(dtype, np.floating):
+                    if dtype.itemsize > (max_dlen // 8):
+                        dtype = f'float{max_dlen}'
+                elif np.issubdtype(dtype, np.integer):
+                    if dtype.itemsize > (max_dlen // 8):
+                        dtype = f'int{max_dlen}'
             h5obj.create_dataset(key, data=val, dtype=dtype)
             
 def h5_to_dict(h5obj):
