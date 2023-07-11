@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nlb_tools"
-version = "0.0.1"
+version = "0.0.2"
 license = "MIT"
 description = "Python tools for participating in Neural Latents Benchmark '21"
 authors = [

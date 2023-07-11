@@ -1270,7 +1270,7 @@ def _make_psth(dataset, train_mask, eval_mask, ignore_mask, make_params, cond_fi
 
 
 ''' Tensor saving functions '''
-def save_to_h5(data_dict, save_path, overwrite=False, dlen=32):
+def save_to_h5(data_dict, save_path, overwrite=False, dlen=32, compression="gzip"):
     """Function that saves dict as .h5 file while preserving
     nested dict structure
 
@@ -1287,13 +1287,15 @@ def save_to_h5(data_dict, save_path, overwrite=False, dlen=32):
     dlen : int, optional
         Byte length of data format to save numerical data,
         by default 32.
+    compression : str, optional
+        Compression to use when writing to HDF5, default "gzip"
     """
     h5file = h5py.File(save_path, 'a')
     good, dup_list = _check_h5_r(data_dict, h5file, overwrite)
     if good:
         if len(dup_list) > 0:
             logger.warning(f"{dup_list} already found in {save_path}. Overwriting...")
-        _save_h5_r(data_dict, h5file, dlen)
+        _save_h5_r(data_dict, h5file, dlen, compression)
         logger.info(f"Saved data to {save_path}")
     else:
         logger.warning(f"{dup_list} already found in {save_path}. Save to file canceled. " \
@@ -1336,7 +1338,7 @@ def _check_h5_r(data_dict, h5obj, overwrite):
                     good = False
     return good, dup_list
 
-def _save_h5_r(data_dict, h5obj, dlen):
+def _save_h5_r(data_dict, h5obj, dlen, compression="gzip"):
     """Recursive function that adds all the items in a dict to an h5py.File or h5py.Group object
 
     Parameters
@@ -1348,6 +1350,8 @@ def _save_h5_r(data_dict, h5obj, dlen):
     dlen : int, optional
         Byte length of data format to save numerical data,
         by default 32.
+    compression : str, optional
+        Compression to use when writing to HDF5, default "gzip"
     """
     for key, val in data_dict.items():
         if isinstance(val, dict):
@@ -1355,11 +1359,21 @@ def _save_h5_r(data_dict, h5obj, dlen):
             _save_h5_r(val, h5group, dlen)
         else:
             if val.dtype == 'object':
-                sub_dtype = f'float{dlen}' if val[0].dtype == np.float else f'int{dlen}' if val[0].dtype == np.int else val[0].dtype
+                sub_dtype = val[0].dtype
+                if dlen is not None:
+                    if np.issubdtype(sub_dtype, np.floating):
+                        sub_dtype = f'float{dlen}'
+                    elif np.issubdtype(sub_dtype, np.integer):
+                        sub_dtype = f'int{dlen}'                    
                 dtype = h5py.vlen_dtype(sub_dtype)
             else:
-                dtype = f'float{dlen}' if val.dtype == np.float else f'int{dlen}' if val.dtype == np.int else val.dtype
-            h5obj.create_dataset(key, data=val, dtype=dtype)
+                dtype = val.dtype
+                if dlen is not None:
+                    if np.issubdtype(dtype, np.floating):
+                        dtype = f'float{dlen}'
+                    elif np.issubdtype(dtype, np.integer):
+                        dtype = f'int{dlen}'
+            h5obj.create_dataset(key, data=val, dtype=dtype, compression=compression)
             
 def h5_to_dict(h5obj):
     """Recursive function that reads HDF5 file to dict
