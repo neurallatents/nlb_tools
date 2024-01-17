@@ -25,9 +25,9 @@ class NWBDataset:
 
         Parameters
         ----------
-        fpath : str
+        fpath : str or nwbfile
             Either the path to an NWB file or to a directory
-            containing NWB files
+            containing NWB files or a nwbfile object
         prefix : str, optional
             A pattern used to filter the NWB files in directory
             by name. By default, prefix='' loads all .nwb files in
@@ -46,59 +46,68 @@ class NWBDataset:
             that are not found in the dataset are
             ignored
         """
-        fpath = os.path.expanduser(fpath)
-        self.fpath = fpath
-        self.prefix = prefix
-        # Check if file/directory exists
-        if not os.path.exists(fpath):
-            raise FileNotFoundError(f"Specified file or directory not found")
-        # If directory, look for files with matching prefix
-        if os.path.isdir(fpath):
-            filenames = sorted(glob(os.path.join(fpath, prefix + "*.nwb")))
+        if isinstance(fpath, str):
+            fpath = os.path.expanduser(fpath)
+            self.fpath = fpath
+            self.prefix = prefix
+            # Check if file/directory exists
+            if not os.path.exists(fpath):
+                raise FileNotFoundError(f"Specified file or directory not found")
+            # If directory, look for files with matching prefix
+            if os.path.isdir(fpath):
+                filenames = sorted(glob(os.path.join(fpath, prefix + "*.nwb")))
+            else:
+                filenames = [fpath]
+            # If no files found
+            if len(filenames) == 0:
+                raise FileNotFoundError(f"No matching files with prefix {prefix} found in directory {fpath}")
+            # If multiple files found
+            elif len(filenames) > 1:
+                loaded = [self.load(fname, split_heldout=split_heldout, skip_fields=skip_fields) for fname in filenames]
+                datas, trial_infos, descriptions, bin_widths = [list(out) for out in zip(*loaded)]
+                assert np.all(np.array(bin_widths) == bin_widths[0]), "Bin widths of loaded datasets must be the same"
+                # Shift loaded files to stack them into continuous array
+                def trial_shift(x, shift_ms, trial_offset):
+                    if x.name.endswith('_time'):
+                        return x + pd.to_timedelta(shift_ms, unit='ms')
+                    elif x.name == 'trial_id':
+                        return x + trial_offset
+                    else:
+                        return x
+                # Loop through files, shifting continuous data
+                past_end = datas[0].index[-1].total_seconds() + round(50 * bin_widths[0] / 1000, 4)
+                descriptions_full = descriptions[0]
+                tcount = len(trial_infos[0])
+                for i in range(1, len(datas)):
+                    block_start_ms = np.ceil(past_end * 10) * 100
+                    datas[i] = datas[i].shift(block_start_ms, freq='ms')
+                    trial_infos[i] = trial_infos[i].apply(trial_shift, shift_ms=block_start_ms, trial_offset=tcount)
+                    descriptions_full.update(descriptions[i])
+                    past_end = datas[i].index[-1].total_seconds() + round(50 * bin_widths[i] / 1000, 4)
+                    tcount += len(trial_infos[i])
+                # Stack data and reindex to continuous
+                self.data = pd.concat(datas, axis=0, join='outer')
+                self.trial_info = pd.concat(trial_infos, axis=0, join='outer').reset_index(drop=True)
+                self.descriptions = descriptions_full
+                self.bin_width = bin_widths[0]
+                new_index = pd.to_timedelta((np.arange(round(self.data.index[-1].total_seconds() * 1000 / self.bin_width) + 1) * self.bin_width).round(4), unit='ms')
+                self.data = self.data.reindex(new_index)
+                self.data.index.name = 'clock_time'
+            # If single file found
+            else:
+                data, trial_info, descriptions, bin_width = self.load(filenames[0], split_heldout=split_heldout, skip_fields=skip_fields)
+                self.data = data
+                self.trial_info = trial_info
+                self.descriptions = descriptions
+                self.bin_width = bin_width
         else:
-            filenames = [fpath]
-        # If no files found
-        if len(filenames) == 0:
-            raise FileNotFoundError(f"No matching files with prefix {prefix} found in directory {fpath}")
-        # If multiple files found
-        elif len(filenames) > 1:
-            loaded = [self.load(fname, split_heldout=split_heldout, skip_fields=skip_fields) for fname in filenames]
-            datas, trial_infos, descriptions, bin_widths = [list(out) for out in zip(*loaded)]
-            assert np.all(np.array(bin_widths) == bin_widths[0]), "Bin widths of loaded datasets must be the same"
-            # Shift loaded files to stack them into continuous array
-            def trial_shift(x, shift_ms, trial_offset):
-                if x.name.endswith('_time'):
-                    return x + pd.to_timedelta(shift_ms, unit='ms')
-                elif x.name == 'trial_id':
-                    return x + trial_offset
-                else:
-                    return x
-            # Loop through files, shifting continuous data
-            past_end = datas[0].index[-1].total_seconds() + round(50 * bin_widths[0] / 1000, 4)
-            descriptions_full = descriptions[0]
-            tcount = len(trial_infos[0])
-            for i in range(1, len(datas)):
-                block_start_ms = np.ceil(past_end * 10) * 100
-                datas[i] = datas[i].shift(block_start_ms, freq='ms')
-                trial_infos[i] = trial_infos[i].apply(trial_shift, shift_ms=block_start_ms, trial_offset=tcount)
-                descriptions_full.update(descriptions[i])
-                past_end = datas[i].index[-1].total_seconds() + round(50 * bin_widths[i] / 1000, 4)
-                tcount += len(trial_infos[i])
-            # Stack data and reindex to continuous
-            self.data = pd.concat(datas, axis=0, join='outer')
-            self.trial_info = pd.concat(trial_infos, axis=0, join='outer').reset_index(drop=True)
-            self.descriptions = descriptions_full
-            self.bin_width = bin_widths[0]
-            new_index = pd.to_timedelta((np.arange(round(self.data.index[-1].total_seconds() * 1000 / self.bin_width) + 1) * self.bin_width).round(4), unit='ms')
-            self.data = self.data.reindex(new_index)
-            self.data.index.name = 'clock_time'
-        # If single file found
-        else:
-            data, trial_info, descriptions, bin_width = self.load(filenames[0], split_heldout=split_heldout, skip_fields=skip_fields)
+            # case of nwbfile object
+            data, trial_info, descriptions, bin_width = self.load(fpath, split_heldout=split_heldout, skip_fields=skip_fields)
             self.data = data
             self.trial_info = trial_info
             self.descriptions = descriptions
             self.bin_width = bin_width
+
         
     def load(self, fpath, split_heldout=True, skip_fields=[]):
         """Loads data from an NWB file into two dataframes,
@@ -106,8 +115,8 @@ class NWBDataset:
 
         Parameters
         ----------
-        fpath : str
-            Path to the NWB file
+        fpath : str or nwbfile
+            Path to the NWB file or a nwbfile object
         split_heldout : bool, optional
             Whether to load heldin units and heldout units
             to separate fields or not, by default True
@@ -130,9 +139,12 @@ class NWBDataset:
         """
         logger.info(f"Loading {fpath}")
 
-        # Open NWB file
-        io = NWBHDF5IO(fpath, 'r')
-        nwbfile = io.read()
+        if isinstance(fpath, str):
+            # Open NWB file
+            io = NWBHDF5IO(fpath, 'r')
+            nwbfile = io.read()
+        else:
+            nwbfile = fpath
 
         # Load trial info and units
         trial_info = (
@@ -259,7 +271,8 @@ class NWBDataset:
                 return x
         trial_info = trial_info.apply(to_td, axis=0)
 
-        io.close()
+        if isinstance(fpath, str):
+            io.close()
 
         return data, trial_info, descriptions, bin_width
     
