@@ -7,7 +7,9 @@ from sklearn.metrics import r2_score, explained_variance_score
 from sklearn.model_selection import GridSearchCV
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 def evaluate(test_annotation_file, user_submission_file):
     """
@@ -16,10 +18,10 @@ def evaluate(test_annotation_file, user_submission_file):
     Parameters
     ----------
     test_annotation_file : str or dict
-        Path to the eval target .h5 file or dict of eval target 
+        Path to the eval target .h5 file or dict of eval target
         data to evaluate against
     user_submission_file : str
-        Path to the .h5 file or dict with user 
+        Path to the .h5 file or dict with user
         rate predictions
 
     Returns
@@ -32,66 +34,100 @@ def evaluate(test_annotation_file, user_submission_file):
 
     # define prefixes for scaling metrics
     scaling_tcount = {
-        'mc_maze_large': '[500]',
-        'mc_maze_medium': '[250]',
-        'mc_maze_small': '[100]',
+        "mc_maze_large": "[500]",
+        "mc_maze_medium": "[250]",
+        "mc_maze_small": "[100]",
     }
 
     # read data from files
     if type(test_annotation_file) == str:
-        target_data = h5py.File(test_annotation_file, 'r')
+        target_data = h5py.File(test_annotation_file, "r")
     else:
         target_data = test_annotation_file
     if type(user_submission_file) == str:
-        user_data = h5py.File(user_submission_file, 'r')
+        user_data = h5py.File(user_submission_file, "r")
     else:
         user_data = user_submission_file
-    
+
     result_list = []
     scaling_dict = {}
     scaling_dict_20 = {}
     # evaluate on datasets that are included in both submission and evaluation data
-    for dataset in ['mc_maze', 'mc_rtt', 'area2_bump', 'dmfc_rsg', 'mc_maze_large', 'mc_maze_medium', 'mc_maze_small']:
-        for bin_size_ms, suf in zip([5, 20], ['', '_20']):
+    for dataset in [
+        "mc_maze",
+        "mc_rtt",
+        "area2_bump",
+        "dmfc_rsg",
+        "mc_maze_large",
+        "mc_maze_medium",
+        "mc_maze_small",
+    ]:
+        for bin_size_ms, suf in zip([5, 20], ["", "_20"]):
             if (dataset + suf) not in user_data.keys():
                 continue
             dataset_name = dataset + suf
             logger.info(f"Evaluating {dataset_name}")
             result_dict = {}
             # check that both submission and evaluation dicts have data for this dataset
-            if 'eval_rates_heldout' not in user_data[dataset_name].keys():
+            if "eval_rates_heldout" not in user_data[dataset_name].keys():
                 continue
-            elif (dataset_name) not in target_data.keys() or 'eval_spikes_heldout' not in target_data[dataset_name].keys():
+            elif (
+                dataset_name
+            ) not in target_data.keys() or "eval_spikes_heldout" not in target_data[
+                dataset_name
+            ].keys():
                 logger.warning(f"Evaluation data for {dataset_name} not found")
                 continue
 
             # extract evaluation data
-            eval_spikes_heldout = target_data[dataset_name]['eval_spikes_heldout'][()].astype('float')
-            train_behavior = target_data[dataset_name]['train_behavior'][()].astype('float')
-            eval_behavior = target_data[dataset_name]['eval_behavior'][()].astype('float')
+            eval_spikes_heldout = target_data[dataset_name]["eval_spikes_heldout"][
+                ()
+            ].astype("float")
+            train_behavior = target_data[dataset_name]["train_behavior"][()].astype(
+                "float"
+            )
+            eval_behavior = target_data[dataset_name]["eval_behavior"][()].astype(
+                "float"
+            )
 
             # extract submitted data
-            eval_rates_heldin = user_data[dataset_name]['eval_rates_heldin'][()].astype('float')
-            eval_rates_heldout = user_data[dataset_name]['eval_rates_heldout'][()].astype('float')
-            eval_rates = np.concatenate([eval_rates_heldin, eval_rates_heldout], axis=-1)
+            eval_rates_heldin = user_data[dataset_name]["eval_rates_heldin"][()].astype(
+                "float"
+            )
+            eval_rates_heldout = user_data[dataset_name]["eval_rates_heldout"][
+                ()
+            ].astype("float")
+            eval_rates = np.concatenate(
+                [eval_rates_heldin, eval_rates_heldout], axis=-1
+            )
 
             # calculate co-smoothing bits per spike
-            result_dict['co-bps'] = float(bits_per_spike(eval_rates_heldout, eval_spikes_heldout))
+            result_dict["co-bps"] = float(
+                bits_per_spike(eval_rates_heldout, eval_spikes_heldout)
+            )
 
-            if dataset == 'dmfc_rsg':
+            if dataset == "dmfc_rsg":
                 # Compute Pearson's r for the correlation between neural speed and tp
                 result_dict["tp corr"] = speed_tp_correlation(
                     eval_spikes_heldout, eval_rates, eval_behavior
                 )
             else:
                 # extract train rates for regression
-                train_rates_heldin = user_data[dataset_name]['train_rates_heldin'][()].astype('float')
-                train_rates_heldout = user_data[dataset_name]['train_rates_heldout'][()].astype('float')
-                train_rates = np.concatenate([train_rates_heldin, train_rates_heldout], axis=-1)
+                train_rates_heldin = user_data[dataset_name]["train_rates_heldin"][
+                    ()
+                ].astype("float")
+                train_rates_heldout = user_data[dataset_name]["train_rates_heldout"][
+                    ()
+                ].astype("float")
+                train_rates = np.concatenate(
+                    [train_rates_heldin, train_rates_heldout], axis=-1
+                )
                 # make decode mask if not provided
-                if 'train_decode_mask' in target_data[dataset_name].keys():
-                    train_decode_mask = target_data[dataset_name]['train_decode_mask'][()]
-                    eval_decode_mask = target_data[dataset_name]['eval_decode_mask'][()]
+                if "train_decode_mask" in target_data[dataset_name].keys():
+                    train_decode_mask = target_data[dataset_name]["train_decode_mask"][
+                        ()
+                    ]
+                    eval_decode_mask = target_data[dataset_name]["eval_decode_mask"][()]
                 else:
                     train_decode_mask = np.full(train_rates.shape[0], True)[:, None]
                     eval_decode_mask = np.full(eval_rates.shape[0], True)[:, None]
@@ -103,42 +139,59 @@ def evaluate(test_annotation_file, user_submission_file):
                     eval_behavior,
                     eval_decode_mask,
                 )
-            if 'psth' in target_data[dataset_name].keys():
+            if "psth" in target_data[dataset_name].keys():
                 # get PSTH information and evaluate
-                psth = target_data[dataset_name]['psth'][()].astype('float')
-                eval_cond_idx = target_data[dataset_name]['eval_cond_idx'][()]
-                if 'eval_jitter' in target_data[dataset_name].keys():
-                    jitter = target_data[dataset_name]['eval_jitter'][()]
+                psth = target_data[dataset_name]["psth"][()].astype("float")
+                eval_cond_idx = target_data[dataset_name]["eval_cond_idx"][()]
+                if "eval_jitter" in target_data[dataset_name].keys():
+                    jitter = target_data[dataset_name]["eval_jitter"][()]
                 else:
                     jitter = np.zeros(eval_rates.shape[0]).astype(int)
                 psth_r2 = eval_psth(psth, eval_rates, eval_cond_idx, jitter=jitter)
                 result_dict["psth R2"] = float(psth_r2)
 
-            if 'eval_rates_heldin_forward' in user_data[dataset_name].keys() and 'eval_spikes_heldin_forward' in target_data[dataset_name].keys():
+            if (
+                "eval_rates_heldin_forward" in user_data[dataset_name].keys()
+                and "eval_spikes_heldin_forward" in target_data[dataset_name].keys()
+            ):
                 # extract forward prediction data
-                eval_spikes_heldin_forward = target_data[dataset_name]['eval_spikes_heldin_forward'][()].astype('float')
-                eval_spikes_heldout_forward = target_data[dataset_name]['eval_spikes_heldout_forward'][()].astype('float')
-                eval_rates_heldin_forward = user_data[dataset_name]['eval_rates_heldin_forward'][()].astype('float')
-                eval_rates_heldout_forward = user_data[dataset_name]['eval_rates_heldout_forward'][()].astype('float')
+                eval_spikes_heldin_forward = target_data[dataset_name][
+                    "eval_spikes_heldin_forward"
+                ][()].astype("float")
+                eval_spikes_heldout_forward = target_data[dataset_name][
+                    "eval_spikes_heldout_forward"
+                ][()].astype("float")
+                eval_rates_heldin_forward = user_data[dataset_name][
+                    "eval_rates_heldin_forward"
+                ][()].astype("float")
+                eval_rates_heldout_forward = user_data[dataset_name][
+                    "eval_rates_heldout_forward"
+                ][()].astype("float")
                 # combine held-in and held-out
-                eval_spikes_forward = np.dstack([eval_spikes_heldin_forward, eval_spikes_heldout_forward])
-                eval_rates_forward = np.dstack([eval_rates_heldin_forward, eval_rates_heldout_forward])
+                eval_spikes_forward = np.dstack(
+                    [eval_spikes_heldin_forward, eval_spikes_heldout_forward]
+                )
+                eval_rates_forward = np.dstack(
+                    [eval_rates_heldin_forward, eval_rates_heldout_forward]
+                )
                 # calculate forward prediction bits per spike
-                result_dict['fp-bps'] = float(bits_per_spike(eval_rates_forward, eval_spikes_forward))
+                result_dict["fp-bps"] = float(
+                    bits_per_spike(eval_rates_forward, eval_spikes_forward)
+                )
 
-            if dataset in ['mc_maze_large', 'mc_maze_medium', 'mc_maze_small']:
-                sd = scaling_dict if suf == '' else scaling_dict_20
+            if dataset in ["mc_maze_large", "mc_maze_medium", "mc_maze_small"]:
+                sd = scaling_dict if suf == "" else scaling_dict_20
                 for key, val in result_dict.items():
                     sd[scaling_tcount[dataset] + " " + key] = val
-            elif dataset in ['mc_maze', 'mc_rtt', 'area2_bump', 'dmfc_rsg']:
+            elif dataset in ["mc_maze", "mc_rtt", "area2_bump", "dmfc_rsg"]:
                 result_list.append({f"{dataset_name}_split": result_dict})
-    
+
     # put scaling data in proper split
     if len(scaling_dict) > 0:
-        result_list.append({'mc_maze_scaling_split': scaling_dict})
+        result_list.append({"mc_maze_scaling_split": scaling_dict})
     if len(scaling_dict_20) > 0:
-        result_list.append({'mc_maze_scaling_20_split': scaling_dict_20})
-    
+        result_list.append({"mc_maze_scaling_20_split": scaling_dict_20})
+
     logger.info("Completed evaluation")
 
     try:
@@ -152,11 +205,12 @@ def evaluate(test_annotation_file, user_submission_file):
 
     return result_list
 
+
 def neg_log_likelihood(rates, spikes, zero_warning=True):
     """Calculates Poisson negative log likelihood given rates and spikes.
     formula: -log(e^(-r) / n! * r^n)
            = r - n*log(r) + log(n!)
-    
+
     Parameters
     ----------
     rates : np.ndarray
@@ -164,34 +218,36 @@ def neg_log_likelihood(rates, spikes, zero_warning=True):
     spikes : np.ndarray
         numpy array containing true spike counts
     zero_warning : bool, optional
-        Whether to print out warning about 0 rate 
+        Whether to print out warning about 0 rate
         predictions or not
-    
+
     Returns
     -------
     float
         Total negative log-likelihood of the data
     """
-    assert spikes.shape == rates.shape, \
-        f"neg_log_likelihood: Rates and spikes should be of the same shape. spikes: {spikes.shape}, rates: {rates.shape}"
+    assert (
+        spikes.shape == rates.shape
+    ), f"neg_log_likelihood: Rates and spikes should be of the same shape. spikes: {spikes.shape}, rates: {rates.shape}"
 
     if np.any(np.isnan(spikes)):
         mask = np.isnan(spikes)
         rates = rates[~mask]
         spikes = spikes[~mask]
-    
-    assert not np.any(np.isnan(rates)), \
-        "neg_log_likelihood: NaN rate predictions found"
 
-    assert np.all(rates >= 0), \
-        "neg_log_likelihood: Negative rate predictions found"
-    if (np.any(rates == 0)):
+    assert not np.any(np.isnan(rates)), "neg_log_likelihood: NaN rate predictions found"
+
+    assert np.all(rates >= 0), "neg_log_likelihood: Negative rate predictions found"
+    if np.any(rates == 0):
         if zero_warning:
-            logger.warning("neg_log_likelihood: Zero rate predictions found. Replacing zeros with 1e-9")
+            logger.warning(
+                "neg_log_likelihood: Zero rate predictions found. Replacing zeros with 1e-9"
+            )
         rates[rates == 0] = 1e-9
-    
+
     result = rates - spikes * np.log(rates) + gammaln(spikes + 1.0)
     return np.sum(result)
+
 
 def bits_per_spike(rates, spikes):
     """Computes bits per spike of rate predictions given spikes.
@@ -205,21 +261,26 @@ def bits_per_spike(rates, spikes):
         3d numpy array containing rate predictions
     spikes : np.ndarray
         3d numpy array containing true spike counts
-    
+
     Returns
     -------
     float
         Bits per spike of rate predictions
     """
     nll_model = neg_log_likelihood(rates, spikes)
-    nll_null = neg_log_likelihood(np.tile(np.nanmean(spikes, axis=(0,1), keepdims=True), (spikes.shape[0], spikes.shape[1], 1)), spikes, zero_warning=False)
+    null_rates = np.tile(
+        np.nanmean(spikes, axis=tuple(range(spikes.ndim - 1)), keepdims=True),
+        spikes.shape[:-1] + (1,),
+    )
+    nll_null = neg_log_likelihood(null_rates, spikes, zero_warning=False)
     return (nll_null - nll_model) / np.nansum(spikes) / np.log(2)
 
+
 def fit_and_eval_decoder(
-    train_rates, 
-    train_behavior, 
-    eval_rates, 
-    eval_behavior, 
+    train_rates,
+    train_behavior,
+    eval_rates,
+    eval_behavior,
     grid_search=True,
 ):
     """Fits ridge regression on train data passed
@@ -242,9 +303,9 @@ def fit_and_eval_decoder(
         2d array with same dimension ordering as train_behavior.
         Used to evaluate regressor
     grid_search : bool
-        Whether to perform a cross-validated grid search to find 
+        Whether to perform a cross-validated grid search to find
         the best regularization hyperparameters.
-    
+
     Returns
     -------
     float
@@ -256,8 +317,9 @@ def fit_and_eval_decoder(
     if np.any(np.isnan(eval_behavior)):
         eval_rates = eval_rates[~np.isnan(eval_behavior)[:, 0]]
         eval_behavior = eval_behavior[~np.isnan(eval_behavior)[:, 0]]
-    assert not np.any(np.isnan(train_rates)) and not np.any(np.isnan(eval_rates)), \
-        "fit_and_eval_decoder: NaNs found in rate predictions within required trial times"
+    assert not np.any(np.isnan(train_rates)) and not np.any(
+        np.isnan(eval_rates)
+    ), "fit_and_eval_decoder: NaNs found in rate predictions within required trial times"
 
     if grid_search:
         decoder = GridSearchCV(Ridge(), {"alpha": np.logspace(-4, 0, 9)})
@@ -265,6 +327,7 @@ def fit_and_eval_decoder(
         decoder = Ridge(alpha=1e-2)
     decoder.fit(train_rates, train_behavior)
     return decoder.score(eval_rates, eval_behavior)
+
 
 def eval_psth(psth, eval_rates, eval_cond_idx, jitter=None):
     """Evaluates match to PSTH across conditions
@@ -281,7 +344,7 @@ def eval_psth(psth, eval_rates, eval_cond_idx, jitter=None):
         corresponding to conditions in `psth`
     jitter : np.ndarray, optional
         1d array containing jitter applied to each eval trial
-    
+
     Returns
     -------
     float
@@ -289,20 +352,29 @@ def eval_psth(psth, eval_rates, eval_cond_idx, jitter=None):
         to true PSTHs across all conditions, averaged
         across neurons
     """
-    jitter_trial = lambda x: x[0] if x[1] == 0 else \
-        np.vstack([np.full((x[1], x[0].shape[1]), np.nan), x[0][:-x[1]]]) if x[1] > 0 else \
-        np.vstack([x[0][-x[1]:], np.full((-x[1], x[0].shape[1]), np.nan)])
+    jitter_trial = (
+        lambda x: x[0]
+        if x[1] == 0
+        else np.vstack([np.full((x[1], x[0].shape[1]), np.nan), x[0][: -x[1]]])
+        if x[1] > 0
+        else np.vstack([x[0][-x[1] :], np.full((-x[1], x[0].shape[1]), np.nan)])
+    )
     if jitter is None:
         jitter = np.zeros(eval_rates.shape[0]).astype(int)
-    true_list = []; pred_list = []
+    true_list = []
+    pred_list = []
     for i in range(len(eval_cond_idx)):
         if eval_cond_idx[i].size == 0:
             continue
-        pred_psth = np.mean([jitter_trial((eval_rates[idx], jitter[idx])) for idx in eval_cond_idx[i]], axis=0)
+        pred_psth = np.mean(
+            [jitter_trial((eval_rates[idx], jitter[idx])) for idx in eval_cond_idx[i]],
+            axis=0,
+        )
         true_psth = psth[i, :, :][~np.isnan(psth[i, :, 0])]
         pred_psth = pred_psth[~np.isnan(psth[i, :, 0])]
-        assert not np.any(np.isnan(pred_psth)), \
-            "eval_psth: NaNs found in rate predictions within required trial times"
+        assert not np.any(
+            np.isnan(pred_psth)
+        ), "eval_psth: NaNs found in rate predictions within required trial times"
         true_list.append(true_psth)
         pred_list.append(pred_psth)
 
@@ -339,6 +411,7 @@ def speed_tp_correlation(eval_spikes_heldout, eval_rates, eval_behavior):
     # Compute neural speed during the set-go period for each trial
     def compute_speed(trial):
         return np.mean(np.linalg.norm(np.diff(trial, axis=0), axis=1))
+
     eval_speeds = [compute_speed(trial[mask]) for trial, mask in zip(eval_rates, masks)]
     eval_speeds = np.array(eval_speeds)
     # Compute correlation within each condition
@@ -378,28 +451,28 @@ def velocity_decoding(
         3d array, with dimensions trial x time x neuron,
         containing rate predictions for all train split trials.
     train_behavior : np.ndarray
-        3d array, with dimensions trial x time x 2, containing x and y hand velocity 
+        3d array, with dimensions trial x time x 2, containing x and y hand velocity
         for all train split trials.
     train_decode_mask : np.ndarray
-        2d array, with dimensions trial x n_masks, containing masks that group trials 
+        2d array, with dimensions trial x n_masks, containing masks that group trials
         with the same decoder for all train split trials.
     eval_rates : np.ndarray
         3d array, with dimensions trial x time x neuron,
         containing rate predictions for all test split trials.
     eval_behavior : np.ndarray
-        3d array, with dimensions trial x time x 2, containing x and y hand velocity 
+        3d array, with dimensions trial x time x 2, containing x and y hand velocity
         for all test split trials.
     eval_decode_mask : np.ndarray
-        2d array, with dimensions trial x n_masks, containing masks that group trials 
+        2d array, with dimensions trial x n_masks, containing masks that group trials
         with the same decoder for all test split trials.
     grid_search : bool, optional
-        Whether to use a cross-validated grid search over the ridge regularization 
+        Whether to use a cross-validated grid search over the ridge regularization
         penalty, by default True
 
     Returns
     -------
     float
-        Average coefficient of determination for hand velocity decoding across masked 
+        Average coefficient of determination for hand velocity decoding across masked
         groups.
     """
     flatten3d = lambda x: x.reshape(-1, x.shape[2]) if (len(x.shape) > 2) else x
