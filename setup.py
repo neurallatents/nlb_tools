@@ -1,9 +1,10 @@
 from setuptools import setup, find_packages
+from pathlib import Path
 
-with open("README.md") as f:
+root = Path(__file__).parent
+with open(root / "README.md", "r") as f:
     long_description = f.read()
-
-with open("requirements.txt") as f:
+with open(root / "requirements.txt") as f:
     requirements = f.readlines()
 
 setup(
