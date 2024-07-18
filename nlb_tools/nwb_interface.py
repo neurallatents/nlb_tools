@@ -685,7 +685,7 @@ class NWBDataset:
         # the window extends 3 x std in either direction
         win_len = int(6 * gauss_bin_std)
         # Create Gaussian kernel
-        window = signal.gaussian(win_len, gauss_bin_std, sym=True)
+        window = signal.windows.gaussian(win_len, gauss_bin_std, sym=True)
         window /= np.sum(window)
         # Extract spiking data
         spike_vals = self.data[signal_type].to_numpy()
