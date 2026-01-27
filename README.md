@@ -10,6 +10,7 @@ This repo contains code to facilitate participation in NLB'21:
 * `nlb_tools/` has code to load and preprocess our dataset files, format data for modeling, and locally evaluate results
 * `examples/tutorials/` contains tutorial notebooks demonstrating basic usage of `nlb_tools`
 * `examples/baselines/` holds the code we used to run our baseline methods. They may serve as helpful references on more extensive usage of `nlb_tools`
+* `data/` contains the ground-truth evaluation data for the test split, made public in January 2026 with the end of the EvalAI challenge
 
 ## Installation
 The package can be installed with the following command:
@@ -32,7 +33,7 @@ format data for our benchmark. You can also find Jupyter notebooks demonstrating
 ## Other resources
 For more information on the benchmark:
 * our [main webpage](https://neurallatents.github.io) contains general information on our benchmark pipeline and introduces the datasets
-* our [EvalAI challenge](https://eval.ai/web/challenges/challenge-page/1256/overview) is where submissions are evaluated and displayed on the leaderboard
+* our [EvalAI challenge](https://eval.ai/web/challenges/challenge-page/1256/overview) is where past submissions are evaluated and displayed on the leaderboard. As of January 2026, new submissions will no longer be evaluated, but the test evaluation data is now public in the `data/` directory of this repo
 * our datasets are available on DANDI: [MC_Maze](https://dandiarchive.org/#/dandiset/000128), [MC_RTT](https://dandiarchive.org/#/dandiset/000129), [Area2_Bump](https://dandiarchive.org/#/dandiset/000127), [DMFC_RSG](https://dandiarchive.org/#/dandiset/000130), [MC_Maze_Large](https://dandiarchive.org/#/dandiset/000138), [MC_Maze_Medium](https://dandiarchive.org/#/dandiset/000139), [MC_Maze_Small](https://dandiarchive.org/#/dandiset/000140)
 * our [paper](http://arxiv.org/abs/2109.04463) describes our motivations behind this benchmarking effort as well as various technical details and explanations of design choices made in preparing NLB'21
 * our [Slack workspace](https://neurallatents.slack.com) lets you interact directly with the developers and other participants. Please email `fpei6 [at] gatech [dot] edu` for an invite link
