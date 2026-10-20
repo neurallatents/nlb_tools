@@ -1,9 +1,9 @@
 import pytest
 import numpy as np
-from scipy.special import gammaln
 
 from nlb_tools.evaluation import (
     evaluate,
+    gammaln,
     neg_log_likelihood,
     bits_per_spike,
     fit_and_eval_decoder,

@@ -2,11 +2,17 @@ import os, sys
 from pathlib import Path
 import pytest
 import numpy as np
-from pynwb import NWBHDF5IO, NWBFile
 from datetime import datetime, timezone
-from dandi.download import download
 
-from nlb_tools.nwb_interface import NWBDataset
+try:
+    from pynwb import NWBHDF5IO, NWBFile
+    from dandi.download import download
+    from nlb_tools.nwb_interface import NWBDataset
+except ImportError:  # pragma: no cover
+    NWBHDF5IO = None
+    NWBFile = None
+    download = None
+    NWBDataset = None
 
 SEED = 0
 

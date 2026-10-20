@@ -1,10 +1,104 @@
+import math
 import numpy as np
-import h5py
-from sklearn.linear_model import Ridge
-from scipy.stats import pearsonr
-from scipy.special import gammaln
-from sklearn.metrics import r2_score, explained_variance_score
-from sklearn.model_selection import GridSearchCV
+
+try:
+    import h5py
+except ImportError:  # pragma: no cover
+    h5py = None
+
+try:
+    from scipy.special import gammaln
+    from scipy.stats import pearsonr
+except ImportError:  # pragma: no cover
+    _lgamma_ufunc = np.frompyfunc(math.lgamma, 1, 1)
+
+    def gammaln(x):
+        return _lgamma_ufunc(np.asarray(x, dtype=np.float64)).astype(np.float64)
+
+    def pearsonr(x, y):
+        x_arr = np.asarray(x, dtype=np.float64).reshape(-1)
+        y_arr = np.asarray(y, dtype=np.float64).reshape(-1)
+        xc = x_arr - np.mean(x_arr)
+        yc = y_arr - np.mean(y_arr)
+        denom = float(np.linalg.norm(xc) * np.linalg.norm(yc))
+        return (float(np.dot(xc, yc) / denom) if denom > 1e-12 else 0.0), 0.0
+
+try:
+    from sklearn.linear_model import Ridge
+    from sklearn.metrics import r2_score, explained_variance_score
+    from sklearn.model_selection import GridSearchCV
+except ImportError:  # pragma: no cover
+    def r2_score(y_true, y_pred):
+        yt = np.asarray(y_true, dtype=np.float64)
+        yp = np.asarray(y_pred, dtype=np.float64)
+        ss_res = np.sum((yt - yp) ** 2, axis=0)
+        ss_tot = np.sum((yt - np.mean(yt, axis=0, keepdims=True)) ** 2, axis=0)
+        valid = ss_tot > 1e-12
+        return float(np.mean(1.0 - ss_res[valid] / ss_tot[valid])) if np.any(valid) else 0.0
+
+    explained_variance_score = r2_score
+
+    class Ridge:
+        def __init__(self, alpha=1.0):
+            self.alpha = float(alpha)
+            self.coef_ = None
+            self.mu_x_ = None
+            self.mu_y_ = None
+
+        def fit(self, X, Y):
+            X_arr = np.asarray(X, dtype=np.float64)
+            Y_arr = np.asarray(Y, dtype=np.float64)
+            self.mu_x_ = np.mean(X_arr, axis=0, keepdims=True)
+            self.mu_y_ = np.mean(Y_arr, axis=0, keepdims=True)
+            Xc = X_arr - self.mu_x_
+            Yc = Y_arr - self.mu_y_
+            self.coef_ = np.linalg.solve(
+                Xc.T @ Xc + self.alpha * np.eye(X_arr.shape[1]), Xc.T @ Yc
+            )
+            return self
+
+        def predict(self, X):
+            X_arr = np.asarray(X, dtype=np.float64)
+            return (X_arr - self.mu_x_) @ self.coef_ + self.mu_y_
+
+        def score(self, X, Y):
+            return r2_score(Y, self.predict(X))
+
+    class GridSearchCV:
+        def __init__(self, estimator, param_grid, cv=5):
+            self.estimator = estimator
+            self.param_grid = param_grid
+            self.cv = cv
+            self.best_estimator_ = Ridge(alpha=1e-2)
+
+        def fit(self, X, Y):
+            alphas = self.param_grid.get("alpha", [1e-2])
+            X_arr = np.asarray(X, dtype=np.float64)
+            Y_arr = np.asarray(Y, dtype=np.float64)
+            n = len(X_arr)
+            split = max(1, int(0.8 * n))
+            best_score = -1e18
+            best_alpha = float(alphas[0])
+            for a in alphas:
+                m = Ridge(alpha=float(a)).fit(X_arr[:split], Y_arr[:split])
+                sc = m.score(X_arr[split:], Y_arr[split:]) if split < n else m.score(X_arr, Y_arr)
+                if sc > best_score:
+                    best_score = sc
+                    best_alpha = float(a)
+            self.best_estimator_ = Ridge(alpha=best_alpha).fit(X_arr, Y_arr)
+            return self
+
+        def predict(self, X):
+            return self.best_estimator_.predict(X)
+
+        def score(self, X, Y):
+            return self.best_estimator_.score(X, Y)
+
+from .neurolean_combs import (
+    betti_refractory_orbit_purification,
+    koopman_5d_spike_jet_observables,
+    schur_feshbach_lfp_spike_dress,
+)
 
 import logging
 
@@ -249,7 +343,7 @@ def neg_log_likelihood(rates, spikes, zero_warning=True):
     return np.sum(result)
 
 
-def bits_per_spike(rates, spikes):
+def bits_per_spike(rates, spikes, per_neuron=False):
     """Computes bits per spike of rate predictions given spikes.
     Bits per spike is equal to the difference between the log-likelihoods (in base 2)
     of the rate predictions and the null model (i.e. predicting mean firing rate of each neuron)
@@ -261,12 +355,22 @@ def bits_per_spike(rates, spikes):
         3d numpy array containing rate predictions
     spikes : np.ndarray
         3d numpy array containing true spike counts
+    per_neuron : bool, optional
+        If True, computes bits per spike independently for each active neuron
+        along the last axis and returns the mean across neurons, by default False
 
     Returns
     -------
     float
         Bits per spike of rate predictions
     """
+    if per_neuron:
+        neuron_bps = []
+        for n in range(spikes.shape[-1]):
+            spk_n = spikes[..., n : n + 1]
+            if np.nansum(spk_n) > 0:
+                neuron_bps.append(bits_per_spike(rates[..., n : n + 1], spk_n, per_neuron=False))
+        return float(np.mean(neuron_bps)) if neuron_bps else float("nan")
     nll_model = neg_log_likelihood(rates, spikes)
     null_rates = np.tile(
         np.nanmean(spikes, axis=tuple(range(spikes.ndim - 1)), keepdims=True),

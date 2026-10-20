@@ -264,12 +264,18 @@ def make_train_input_tensors(dataset, dataset_name,
         additional data based on provided arguments
     """
     assert isinstance(dataset, NWBDataset), "`dataset` must be an instance of NWBDataset"
-    assert dataset_name in PARAMS.keys(), f"`dataset_name` must be one of {list(PARAMS.keys())}"
+    assert isinstance(dataset_name, dict) or dataset_name in PARAMS.keys() or update_params is not None, \
+        f"`dataset_name` must be one of {list(PARAMS.keys())}, a params dict, or accompanied by `update_params`"
     assert isinstance(trial_split, (pd.Series, np.ndarray, list)) or trial_split in ['train', 'val'], \
         "Invalid `trial_split` argument. Please refer to the documentation for valid choices"
 
     # Fetch and update params
-    params = PARAMS[dataset_name].copy()
+    if isinstance(dataset_name, dict):
+        params = dataset_name.copy()
+    elif dataset_name in PARAMS:
+        params = PARAMS[dataset_name].copy()
+    else:
+        params = {}
     if update_params is not None:
         params.update(update_params)
     # Add filename extension if necessary
@@ -400,12 +406,18 @@ def make_eval_input_tensors(dataset, dataset_name,
         spiking data for indicated trials
     """
     assert isinstance(dataset, NWBDataset), "`dataset` must be an instance of NWBDataset"
-    assert dataset_name in PARAMS.keys(), f"`dataset_name` must be one of {list(PARAMS.keys())}"
+    assert isinstance(dataset_name, dict) or dataset_name in PARAMS.keys() or update_params is not None, \
+        f"`dataset_name` must be one of {list(PARAMS.keys())}, a params dict, or accompanied by `update_params`"
     assert isinstance(trial_split, (pd.Series, np.ndarray, list)) or trial_split in ['train', 'val', 'test'], \
         "Invalid `trial_split` argument. Please refer to the documentation for valid choices"
 
     # Fetch and update params
-    params = PARAMS[dataset_name].copy()
+    if isinstance(dataset_name, dict):
+        params = dataset_name.copy()
+    elif dataset_name in PARAMS:
+        params = PARAMS[dataset_name].copy()
+    else:
+        params = {}
     if update_params is not None:
         params.update(update_params)
     # Add filename extension if necessary
@@ -524,14 +536,20 @@ def make_eval_target_tensors(dataset, dataset_name,
         and behavioral correlates
     """
     assert isinstance(dataset, NWBDataset), "`dataset` must be an instance of NWBDataset"
-    assert dataset_name in PARAMS.keys(), f"`dataset_name` must be one of {list(PARAMS.keys())}"
+    assert isinstance(dataset_name, dict) or dataset_name in PARAMS.keys() or update_params is not None, \
+        f"`dataset_name` must be one of {list(PARAMS.keys())}, a params dict, or accompanied by `update_params`"
     assert isinstance(train_trial_split, (pd.Series, np.ndarray, list)) or train_trial_split in ['train', 'val', 'test'], \
         "Invalid `train_trial_split` argument. Please refer to the documentation for valid choices"
     assert isinstance(eval_trial_split, (pd.Series, np.ndarray, list)) or eval_trial_split in ['train', 'val', 'test'], \
         "Invalid `eval_trial_split` argument. Please refer to the documentation for valid choices"
     
     # Fetch and update params
-    params = PARAMS[dataset_name].copy()
+    if isinstance(dataset_name, dict):
+        params = dataset_name.copy()
+    elif dataset_name in PARAMS:
+        params = PARAMS[dataset_name].copy()
+    else:
+        params = {}
     if update_params is not None:
         params.update(update_params)
     # Add filename extension if necessary
@@ -541,7 +559,7 @@ def make_eval_target_tensors(dataset, dataset_name,
     # unpack params
     spk_field = params['spk_field']
     hospk_field = params['hospk_field']
-    make_params = params['eval_make_params'].copy()
+    make_params = params.get('eval_make_params', params.get('make_params', {})).copy()
     behavior_source = params['behavior_source']
     behavior_field = params['behavior_field']
     jitter = params.get('jitter', None)
@@ -551,6 +569,7 @@ def make_eval_target_tensors(dataset, dataset_name,
 
     # Properly name output fields based on submission bin width
     suf = '' if (dataset.bin_width == 5) else f'_{dataset.bin_width}'
+    dataset_key = (dataset_name if isinstance(dataset_name, str) else params.get('dataset_name', 'custom')) + suf
     
     # Prep masks
     train_mask = _prep_mask(dataset, train_trial_split)
@@ -631,7 +650,7 @@ def make_eval_target_tensors(dataset, dataset_name,
     
     # Construct data dict
     data_dict = {
-        dataset_name + suf: {
+        dataset_key: {
             'eval_spikes_heldout': eval_dict[hospk_field],
             'train_behavior': train_behavior,
             'eval_behavior': eval_behavior,
@@ -647,8 +666,8 @@ def make_eval_target_tensors(dataset, dataset_name,
             eval_decode_mask = params['decode_masks'](dataset.trial_info[eval_mask])
         else:
             train_decode_mask, eval_decode_mask = params['decode_masks']
-        data_dict[dataset_name + suf]['train_decode_mask'] = train_decode_mask
-        data_dict[dataset_name + suf]['eval_decode_mask'] = eval_decode_mask
+        data_dict[dataset_key]['train_decode_mask'] = train_decode_mask
+        data_dict[dataset_key]['eval_decode_mask'] = eval_decode_mask
         
     # Calculate PSTHs if desired
     if include_psth:
@@ -658,12 +677,12 @@ def make_eval_target_tensors(dataset, dataset_name,
         else:
             (train_cond_idx, eval_cond_idx), psths, comb = _make_psth(dataset, train_mask, eval_mask, ignore_mask, **psth_params)
             
-            data_dict[dataset_name + suf]['eval_cond_idx'] = eval_cond_idx
-            data_dict[dataset_name + suf]['train_cond_idx'] = train_cond_idx
-            data_dict[dataset_name + suf]['psth'] = psths
+            data_dict[dataset_key]['eval_cond_idx'] = eval_cond_idx
+            data_dict[dataset_key]['train_cond_idx'] = train_cond_idx
+            data_dict[dataset_key]['psth'] = psths
             if jitter is not None:
-                data_dict[dataset_name + suf]['eval_jitter'] = (eval_jitter_vals / dataset.bin_width).round().astype(int)
-                data_dict[dataset_name + suf]['train_jitter'] = (train_jitter_vals / dataset.bin_width).round().astype(int)
+                data_dict[dataset_key]['eval_jitter'] = (eval_jitter_vals / dataset.bin_width).round().astype(int)
+                data_dict[dataset_key]['train_jitter'] = (train_jitter_vals / dataset.bin_width).round().astype(int)
 
     # Delete jitter column
     if jitter is not None:
